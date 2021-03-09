@@ -1,0 +1,6 @@
+{
+	"jwt_secret": null,
+	"listen_host": "0.0.0.0",
+	"listen_port": 4242,
+	"ssl_config": {}
+}
