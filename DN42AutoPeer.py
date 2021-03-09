@@ -415,15 +415,6 @@ ip route add {peerIPV6}/128 src {myIPV6} dev dn42-{peerName}""" if peerIPV6 != N
     direct;
 }};""" if peerIPV6 != None else ""
     
-    myconfig = f"""ASN: AS{myasn}
-WS公鑰: {publkey}
-連線地址: {myhost}:{myport}
-DN42 IPv4: {myIPV4}
-DN42 IPv6: {myIPV6}
-Link local IPv6: {myIPV6LL}
-"""
-    print("===== myconfig ========")
-    print(myconfig)
     paramaters = { valid_key: paramaters[valid_key] for valid_key in client_valid_keys }
     paramaters["peer_signature"] = ""
     paramaters["peer_plaintext"] = ""
