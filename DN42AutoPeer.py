@@ -50,6 +50,7 @@ ssh-keygen -p -N "" -m pem -f ~/.ssh/id_rsa_tosign<br>
 echo -n "{text2sign}"  | openssl dgst -sign ~/.ssh/id_rsa_tosign | openssl base64<br>
 # Delete converted private key<br>
 rm ~/.ssh/id_rsa_tosign<br>
+# Done. You can copy the signature now<br>
 </code>"""}
 
 def get_signature_html(baseURL,paramaters):
