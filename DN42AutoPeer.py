@@ -292,6 +292,7 @@ def verify_signature(plaintext,pub_key,raw_signature,method):
     raise NotImplementedError("method not implement")
 
 async def verify_user_signature(peerASN,plaintext,raw_signature):
+    try:
     sig_info = jwt.decode(plaintext.encode("utf8"),jwt_secret)
     if sig_info["ASN"] != peerASN:
         raise ValueError("JWT verification failed. You are not the mntner of " + sig_info["ASN"])
@@ -300,7 +301,6 @@ async def verify_user_signature(peerASN,plaintext,raw_signature):
     authes = await get_auth_method(mntner)
     tried = False
     authresult = [{"Your input":{"plaintext":plaintext,"signature":raw_signature}}]
-    try:
         for method,pub_key in authes:
             try:
                 if verify_signature(plaintext,pub_key,raw_signature,method) == True:
@@ -309,8 +309,8 @@ async def verify_user_signature(peerASN,plaintext,raw_signature):
                 authresult += [{"Method": method , "Result": type(e).__name__ + ": " + str(e), "Content":  pub_key}]
         raise ValueError(yaml.dump(authresult, sort_keys=False))
     except Exception as e:
-        r.__name__ = "SignatureError: " + r.__name__
-        raise r
+        e.__name__ = "SignatureError: " + e.__name__
+        raise e
 
 def get_err_page(paramaters,level,error):
     retstr =  f"""<!DOCTYPE html>
