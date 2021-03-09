@@ -290,7 +290,6 @@ def verify_signature(plaintext,pub_key,raw_signature,method):
         OpenSSL.crypto.verify(cert=ppp,signature=signature,data = plaintext.encode("utf8"), digest = "sha256")
         return True
     raise NotImplementedError("method not implement")
-    return False
 
 async def verify_user_signature(peerASN,plaintext,raw_signature):
     sig_info = jwt.decode(plaintext.encode("utf8"),jwt_secret)
@@ -307,8 +306,9 @@ async def verify_user_signature(peerASN,plaintext,raw_signature):
                 return True
         except Exception as e:
             authresult += [{"Method": method , "Result": type(e).__name__ + ": " + str(e), "Content":  pub_key}]
-    raise ValueError(yaml.dump(authresult, sort_keys=False))
-    return None
+    r = ValueError(yaml.dump(authresult, sort_keys=False))
+    r.__name__ = "SignatureError"
+    raise r
 
 def get_err_page(paramaters,level,error):
     retstr =  f"""<!DOCTYPE html>
