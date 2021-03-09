@@ -496,6 +496,13 @@ def action(paramaters):
     paramaters = { valid_key: paramaters[valid_key] for valid_key in client_valid_keys }
     paramaters = {**paramaters, **my_paramaters} 
     try:
+        try:
+            if paramaters["PeerID"] != None:
+                if int(paramaters["PeerID"]) <= 1024 or int(paramaters["PeerID"]) > 65535:
+                    raise ValueError("Invalid PeerID")
+        except Exception as e:
+            paramaters["PeerID"] = None
+            raise e
         if action=="OK":
             if paramaters["peerASN"] == None:
                 paramaters["hasIPV4"] = True 
@@ -503,9 +510,6 @@ def action(paramaters):
                 paramaters["hasIPV6LL"] = True
                 paramaters["hasHost"] = True 
             return get_html(paramaters,peerSuccess=False)
-        if paramaters["PeerID"] != None:
-            if int(paramaters["PeerID"]) <= 1024 or int(paramaters["PeerID"]) > 65535:
-                raise ValueError("Invalid PeerID")
         if action == "Get Info":
             peerInfo = yaml.load(open(wgconfpath + "/" + paramaters["PeerID"] + ".yaml").read())
             peerInfo = { valid_key: peerInfo[valid_key] for valid_key in client_valid_keys }
