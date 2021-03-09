@@ -5,6 +5,7 @@ import jwt
 import time
 import yaml
 import json
+import asyncio
 import random
 import string
 import socket
@@ -34,6 +35,7 @@ jwt_secret = my_config["jwt_secret"]
 wgconfpath = my_config["wgconfpath"]
 bdconfpath = my_config["bdconfpath"]
 client_valid_keys = ["peer_plaintext","peer_signature", "peerASN", "hasIPV4", "peerIPV4", "hasIPV6", "peerIPV6", "hasIPV6LL", "peerIPV6LL", "hasHost", "peerHost", "peerWG_Pub_Key", "peerContact", "PeerID"]
+dn42_whois_server = my_config["dn42_whois_server"]
 dn42repo_base = my_config["dn42repo_base"]
 DN42_valid_ipv4 = IPv4Network(my_config["DN42_valid_ipv4"])
 DN42_valid_ipv6 = IPv6Network(my_config["DN42_valid_ipv6"])
@@ -235,15 +237,37 @@ def proc_data(data_in):
             ret_dict[key] = [val]
     return ret_dict
 
+import asyncio
+async def socket_query(addr,message):
+    host,port = addr.rsplit(":",1)
+    port = int(port)
+    reader, writer = await asyncio.open_connection(host, port)
+    writer.write(message.encode("utf8"))
+    await writer.drain()
+    writer.write_eof()
+    data = await reader.read()
+    writer.close()
+    await writer.wait_closed()
+    return data.decode("utf8")
+
+async def whois_query(addr,query):
+    result = await socket_query(addr,query + "\r\n")
+    result_item = result.split("% Information related to ")
+    result_item = list(map(lambda x:x.split("\n",1)[1],result_item))
+    if len(result_item) == 0:
+        raise FileNotFoundError(query)
+    return result_item
+    
+
 async def get_mntner_from_asn(asn):
     client = tornado.httpclient.AsyncHTTPClient()
-    asn_info = await client.fetch(dn42repo_base + "/data/aut-num/" + asn, headers = {'User-agent': 'DN42 auto peer bot'})
-    return proc_data(asn_info.body.decode("utf8"))["mnt-by"][0]
+    asn_info = (await whois_query(dn42_whois_server, "/aut-num/" + asn))[-1]
+    return proc_data(asn_info)["mnt-by"][0]
 
 async def get_mntner_info(mntner):
     client = tornado.httpclient.AsyncHTTPClient()
-    mntner_info = await client.fetch(dn42repo_base + "/data/mntner/" + mntner, headers = {'User-agent': 'your bot 0.2'})
-    ret = proc_data(mntner_info.body.decode("utf8"))
+    mntner_info = (await whois_query(dn42_whois_server, "mntner/" + mntner))[-1]
+    ret = proc_data(mntner_info)
     if "auth" not in ret:
         ret["auth"] = []
     return ret
