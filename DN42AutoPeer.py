@@ -261,7 +261,7 @@ async def whois_query(addr,query):
 
 async def get_mntner_from_asn(asn):
     client = tornado.httpclient.AsyncHTTPClient()
-    asn_info = (await whois_query(dn42_whois_server, "/aut-num/" + asn))[-1]
+    asn_info = (await whois_query(dn42_whois_server, "aut-num/" + asn))[-1]
     return proc_data(asn_info)["mnt-by"][0]
 
 async def get_mntner_info(mntner):
