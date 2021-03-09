@@ -237,10 +237,12 @@ def proc_data(data_in):
 
 def get_mntner_from_asn(asn):
     asn_info = requests.get(dn42repo_base + "/data/aut-num/" + asn, headers = {'User-agent': 'your bot 0.2'})
+    r.raise_for_status()
     return proc_data(asn_info.text)["mnt-by"][0]
 
 def get_mntner_info(mntner):
     mntner_info = requests.get(dn42repo_base + "/data/mntner/" + mntner, headers = {'User-agent': 'your bot 0.2'})
+    r.raise_for_status()
     ret = proc_data(mntner_info.text)
     if "auth" not in ret:
         ret["auth"] = []
