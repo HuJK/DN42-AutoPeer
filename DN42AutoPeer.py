@@ -309,12 +309,9 @@ async def verify_user_signature(peerASN,plaintext,raw_signature):
                 authresult += [{"Method": method , "Result": type(e).__name__ + ": " + str(e), "Content":  pub_key}]
         raise ValueError(yaml.dump(authresult, sort_keys=False))
     except Exception as e:
-        class customError(BaseException):
-            def __str__(self):
-                return str(e)
+        class customError(type(e)):
         customError.__name__ = "SignatureError: " + type(e).__name__
-        cE = customError()
-        raise cE
+        raise customError(str(e))
 
 def get_err_page(paramaters,level,error):
     retstr =  f"""<!DOCTYPE html>
