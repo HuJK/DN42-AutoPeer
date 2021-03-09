@@ -543,6 +543,7 @@ class actionHandler(tornado.web.RequestHandler):
     def __init__(self, *args, **kwargs):
         super(actionHandler, self).__init__(*args, **kwargs)
     def set_default_headers(self, *args, **kwargs):
+        # Just for fun, pretend I am a php server
         self.set_header('server','Microsoft-IIS/7.5')
         self.set_header('x-powered-by','PHP/5.4.2')
     async def get(self, *args, **kwargs): 
