@@ -237,7 +237,6 @@ def proc_data(data_in):
             ret_dict[key] = [val]
     return ret_dict
 
-import asyncio
 async def socket_query(addr,message):
     host,port = addr.rsplit(":",1)
     port = int(port)
@@ -252,12 +251,11 @@ async def socket_query(addr,message):
 
 async def whois_query(addr,query):
     result = await socket_query(addr,query + "\r\n")
-    result_item = result.split("% Information related to ")
+    result_item = result.split("% Information related to ")[1:]
     result_item = list(map(lambda x:x.split("\n",1)[1],result_item))
     if len(result_item) == 0:
         raise FileNotFoundError(query)
     return result_item
-    
 
 async def get_mntner_from_asn(asn):
     client = tornado.httpclient.AsyncHTTPClient()
