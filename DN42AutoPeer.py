@@ -330,7 +330,7 @@ input[type="text"] {{
 
 <h2>DN42 Automatic Peering</h2>
 <h3>{level}</h3>
-{"<h4>" + type(error).__name__ + ":</h4>" if type(error) != str else ""}
+{"<h3>" + type(error).__name__ + ":</h3>" if type(error) != str else ""}
 <code><pre>{str(error)}</pre></code>
 <form action="/action_page.php" method="post">\n"""
     paramaters = { valid_key: paramaters[valid_key] for valid_key in client_valid_keys }
@@ -368,14 +368,14 @@ async def check_reg_paramater(paramaters):
         check_valid_ip_range(IPv4Network,DN42_valid_ipv4s,paramaters["peerIPV4"],"DN42 ip")
         peerIPV4_info = proc_data((await whois_query(dn42_whois_server,paramaters["peerIPV4"]))[-1])
         if peerIPV4_info["mnt-by"][0] != mntner:
-            raise PermissionError("IP " + paramaters["peerIPV4"] + " owned by " + peerIPV4_info["mnt-by"][0])
+            raise PermissionError("IP " + paramaters["peerIPV4"] + " owned by " + peerIPV4_info["mnt-by"][0] + " instead of " + mntner)
     else:
         paramaters["peerIPV4"] = None
     if paramaters["hasIPV6"]:
         check_valid_ip_range(IPv6Network,DN42_valid_ipv6,paramaters["peerIPV6"],"DN42 ipv6")
         peerIPV6_info = proc_data((await whois_query(dn42_whois_server,paramaters["peerIPV6"]))[-1])
         if peerIPV6_info["mnt-by"][0] != mntner:
-            raise PermissionError("IP " + paramaters["peerIPV6"] + " owned by " + peerIPV6_info["mnt-by"][0])
+            raise PermissionError("IP " + paramaters["peerIPV6"] + " owned by " + peerIPV6_info["mnt-by"][0] + " instead of " + mntner)
     else:
         paramaters["peerIPV6"] = None
     if paramaters["hasIPV6LL"]:
