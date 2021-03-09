@@ -300,15 +300,17 @@ async def verify_user_signature(peerASN,plaintext,raw_signature):
     authes = await get_auth_method(mntner)
     tried = False
     authresult = [{"Your input":{"plaintext":plaintext,"signature":raw_signature}}]
-    for method,pub_key in authes:
-        try:
-            if verify_signature(plaintext,pub_key,raw_signature,method) == True:
-                return True
-        except Exception as e:
-            authresult += [{"Method": method , "Result": type(e).__name__ + ": " + str(e), "Content":  pub_key}]
-    r = ValueError(yaml.dump(authresult, sort_keys=False))
-    r.__name__ = "SignatureError"
-    raise r
+    try:
+        for method,pub_key in authes:
+            try:
+                if verify_signature(plaintext,pub_key,raw_signature,method) == True:
+                    return True
+            except Exception as e:
+                authresult += [{"Method": method , "Result": type(e).__name__ + ": " + str(e), "Content":  pub_key}]
+        raise ValueError(yaml.dump(authresult, sort_keys=False))
+    catch Exception as e:
+        r.__name__ = "SignatureError: " + r.__name__
+        raise r
 
 def get_err_page(paramaters,level,error):
     retstr =  f"""<!DOCTYPE html>
