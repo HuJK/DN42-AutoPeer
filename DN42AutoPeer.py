@@ -536,9 +536,9 @@ async def action(paramaters):
         if paramaters["peerASN"] == None:
             raise ValueError("peerASN can't be null.")
         if paramaters["peerASN"].startswith("AS"):
-            paramaters["peerASN"] = f"AS{int(paramaters['peerASN'][2:])}"
+            aaa = int(paramaters['peerASN'][2:])
         else:
-            paramaters["peerASN"] = f"AS{int(paramaters['peerASN'])}"
+            aaa = int(paramaters['peerASN'])
         #Actions need ASN
         if action=="Delete":
             await verify_user_signature(paramaters["peerASN"],paramaters["peer_plaintext"],paramaters["peer_signature"])
