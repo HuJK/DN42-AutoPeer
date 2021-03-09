@@ -199,7 +199,7 @@ textarea {{
    <tr><td>Your Telegram ID</td><td><input type="text" value="{peerContact}" name="peerContact" /></td></tr>
    <tr><td><input type="submit" name="action" value="Register" /></td><td>Register a new peer to get Peer ID</td></tr>
    <tr><td>Your Peer ID</td><td><input type="text" value="{PeerID if PeerID != None else ""}" name="PeerID" /></td></tr>
-   <tr><td><input type="submit" name="action" value="Get Info" /><input type="submit" name="action" value="Delete" /></td><td>Get the info of an existening peer or deleteit.</td></tr>
+   <tr><td><input type="submit" name="action" value="Get Info" /><input type="submit" name="action" value="Delete" /></td><td>Get the info of an existening peer or delete it.</td></tr>
  </table>
 </form>
 
