@@ -237,12 +237,12 @@ def proc_data(data_in):
 
 async def get_mntner_from_asn(asn):
     client = tornado.httpclient.AsyncHTTPClient()
-    asn_info = client.fetch(dn42repo_base + "/data/aut-num/" + asn, headers = {'User-agent': 'DN42 auto peer bot'})
+    asn_info = await client.fetch(dn42repo_base + "/data/aut-num/" + asn, headers = {'User-agent': 'DN42 auto peer bot'})
     return proc_data(asn_info.body)["mnt-by"][0]
 
 async def get_mntner_info(mntner):
     client = tornado.httpclient.AsyncHTTPClient()
-    mntner_info = client.fetch(dn42repo_base + "/data/mntner/" + mntner, headers = {'User-agent': 'your bot 0.2'})
+    mntner_info = await client.fetch(dn42repo_base + "/data/mntner/" + mntner, headers = {'User-agent': 'your bot 0.2'})
     ret = proc_data(mntner_info.body)
     if "auth" not in ret:
         ret["auth"] = []
