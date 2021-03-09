@@ -310,6 +310,8 @@ async def verify_user_signature(peerASN,plaintext,raw_signature):
         raise ValueError(yaml.dump(authresult, sort_keys=False))
     except Exception as e:
         class customError(type(e)):
+            def init(m):
+                super(m)
         customError.__name__ = "SignatureError: " + type(e).__name__
         raise customError(str(e))
 
