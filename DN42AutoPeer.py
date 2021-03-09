@@ -258,9 +258,10 @@ async def get_auth_method(mntner):
         ret += [ainfo]
     return ret
 
-def verify_signature(plaintext,pub_key,signature_base64,method):
-    signature = base64.b64decode(signature_base64)
+def verify_signature(plaintext,pub_key,raw_signature,method):
     if method=="ssh-rsa":
+        signature_base64 = raw_signature.replace("\n","").replace("\r","")
+        signature = base64.b64decode(signature_base64)
         ppp = OpenSSL.crypto.X509()
         pkk = OpenSSL.crypto.load_publickey(OpenSSL.crypto.FILETYPE_PEM, RSA.importKey("ssh-rsa " + pub_key).exportKey())
         ppp.set_pubkey(pkk)
@@ -269,19 +270,18 @@ def verify_signature(plaintext,pub_key,signature_base64,method):
     raise NotImplementedError("method not implement")
     return False
 
-async def verify_user_signature(peerASN,plaintext,signature_base64):
+async def verify_user_signature(peerASN,plaintext,raw_signature):
     sig_info = jwt.decode(plaintext.encode("utf8"),jwt_secret)
     if sig_info["ASN"] != peerASN:
         raise ValueError("JWT verification failed. You are not the mntner of " + sig_info["ASN"])
     supported_method= ["ssh-rsa"]
-    signature_base64 = signature_base64.replace("\n","").replace("\r","")
     mntner = await get_mntner_from_asn(peerASN)
     authes = await get_auth_method(mntner)
     tried = False
-    authresult = []
+    authresult = [{"Your input":{"plaintext":plaintext,"signature":raw_signature}}]
     for method,pub_key in authes:
         try:
-            if verify_signature(plaintext,pub_key,signature_base64,method) == True:
+            if verify_signature(plaintext,pub_key,raw_signature,method) == True:
                 return True
         except Exception as e:
             authresult += [{"Method": method , "Result": type(e).__name__ + ": " + str(e), "Content":  pub_key}]
