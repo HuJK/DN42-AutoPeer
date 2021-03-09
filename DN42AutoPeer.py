@@ -37,9 +37,9 @@ bdconfpath = my_config["bdconfpath"]
 client_valid_keys = ["peer_plaintext","peer_signature", "peerASN", "hasIPV4", "peerIPV4", "hasIPV6", "peerIPV6", "hasIPV6LL", "peerIPV6LL", "hasHost", "peerHost", "peerWG_Pub_Key", "peerContact", "PeerID"]
 dn42_whois_server = my_config["dn42_whois_server"]
 dn42repo_base = my_config["dn42repo_base"]
-DN42_valid_ipv4 = IPv4Network(my_config["DN42_valid_ipv4"])
-DN42_valid_ipv6 = IPv6Network(my_config["DN42_valid_ipv6"])
-valid_ipv6_lilo = IPv6Network(my_config["valid_ipv6_linklocal"])
+DN42_valid_ipv4s = my_config["DN42_valid_ipv4s"]
+DN42_valid_ipv6s = my_config["DN42_valid_ipv6s"]
+valid_ipv6_lilos = my_config["valid_ipv6_linklocals"]
 
 method_hint = {"ssh-rsa":"""
 <h4>Paste following command to your terminal to get your signature.</h4>
@@ -347,23 +347,35 @@ input[type="text"] {{
 </html>"""
     return retstr
 
-def check_reg_paramater(paramaters):
+def check_valid_ip_range(IPclass,IPranges,ip,name):
+    sum = 0
+    for iprange in IPranges:
+        if IPclass(iprange).supernet_of(IPclass(ip)):
+            return True
+    raise ValueError("Not a valid " + name + " address")
+    
+
+async def check_reg_paramater(paramaters):
     paramaters["PeerID"] = None
     if (paramaters["hasIPV4"] or paramaters["hasIPV6"] or paramaters["hasIPV6LL"]) == False:
         raise ValueError("You can't peer without any IP.")
+    mntner = await get_mntner_from_asn(paramaters["peerASN"])
     if paramaters["hasIPV4"]:
-        if not DN42_valid_ipv4.supernet_of(IPv4Network(paramaters["peerIPV4"])):
-            raise ValueError("Not a valid DN42 ip address")
+        check_valid_ip_range(IPv4Network,DN42_valid_ipv4s,paramaters["peerIPV4"],"DN42 ip")
+        peerIPV4_info = proc_data((await whois_query(dn42_whois_server,paramaters["peerIPV4"]))[-1])
+        if peerIPV4_info["mnt-by"] != mntner:
+            raise PermissionError("IP " + paramaters["peerIPV4"] + " owned by " + peerIPV4_info["mnt-by"])
     else:
         paramaters["peerIPV4"] = None
     if paramaters["hasIPV6"]:
-        if not DN42_valid_ipv6.supernet_of(IPv6Network(paramaters["peerIPV6"])):
-            raise ValueError("Not a valid DN42 ipv6 address")
+        check_valid_ip_range(IPv6Network,DN42_valid_ipv6,paramaters["peerIPV6"],"DN42 ipv6")
+        peerIPV6_info = proc_data((await whois_query(dn42_whois_server,paramaters["peerIPV6"]))[-1])
+        if peerIPV6_info["mnt-by"] != mntner:
+            raise PermissionError("IP " + paramaters["peerIPV6"] + " owned by " + peerIPV6_info["mnt-by"])
     else:
         paramaters["peerIPV6"] = None
     if paramaters["hasIPV6LL"]:
-        if not valid_ipv6_lilo.supernet_of(IPv6Network(paramaters["peerIPV6LL"])):
-            raise ValueError("Not a valid link-local ipv6 address")
+        check_valid_ip_range(IPv6Network,valid_ipv6_lilo,paramaters["peerIPV6LL"],"link-local ipv6")
     else:
         paramaters["peerIPV6LL"] = None
     print(paramaters["hasHost"])
@@ -550,7 +562,7 @@ async def action(paramaters):
             return await get_signature_html(dn42repo_base,paramaters)
         elif action == "Register":
             await verify_user_signature(paramaters["peerASN"],paramaters["peer_plaintext"],paramaters["peer_signature"])
-            paramaters = check_reg_paramater(paramaters)
+            paramaters = await check_reg_paramater(paramaters)
             new_config = newConfig(paramaters)
             paramaters = new_config["paramaters"]
             del new_config["paramaters"]
