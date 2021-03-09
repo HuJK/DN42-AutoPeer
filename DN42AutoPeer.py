@@ -375,7 +375,7 @@ async def check_reg_paramater(paramaters):
     else:
         paramaters["peerIPV6"] = None
     if paramaters["hasIPV6LL"]:
-        check_valid_ip_range(IPv6Network,valid_ipv6_lilo,paramaters["peerIPV6LL"],"link-local ipv6")
+        check_valid_ip_range(IPv6Network,valid_ipv6_lilos,paramaters["peerIPV6LL"],"link-local ipv6")
     else:
         paramaters["peerIPV6LL"] = None
     print(paramaters["hasHost"])
