@@ -53,10 +53,10 @@ rm ~/.ssh/id_rsa_tosign<br>
 # Done. You can copy the signature now<br>
 </code>"""}
 
-def get_signature_html(baseURL,paramaters):
+async def get_signature_html(baseURL,paramaters):
     peerASN = paramaters["peerASN"]
-    peerMNT = get_mntner_from_asn(peerASN)
-    methods = get_auth_method(peerMNT)
+    peerMNT = await get_mntner_from_asn(peerASN)
+    methods = await get_auth_method(peerMNT)
     text2sign = jwt.encode({'ASN': peerASN, "exp":datetime.datetime.utcnow() + datetime.timedelta(hours = 1) }, jwt_secret, algorithm='HS256')
     methods_class = {"Supported":{},"Unsupported":{}}
     for m,v in methods:
@@ -235,21 +235,21 @@ def proc_data(data_in):
             ret_dict[key] = [val]
     return ret_dict
 
-def get_mntner_from_asn(asn):
-    asn_info = requests.get(dn42repo_base + "/data/aut-num/" + asn, headers = {'User-agent': 'your bot 0.2'})
-    asn_info.raise_for_status()
-    return proc_data(asn_info.text)["mnt-by"][0]
+async def get_mntner_from_asn(asn):
+    client = tornado.httpclient.AsyncHTTPClient()
+    asn_info = client.fetch(dn42repo_base + "/data/aut-num/" + asn, headers = {'User-agent': 'DN42 auto peer bot'})
+    return proc_data(asn_info.body)["mnt-by"][0]
 
-def get_mntner_info(mntner):
-    mntner_info = requests.get(dn42repo_base + "/data/mntner/" + mntner, headers = {'User-agent': 'your bot 0.2'})
-    mntner_info.raise_for_status()
-    ret = proc_data(mntner_info.text)
+async def get_mntner_info(mntner):
+    client = tornado.httpclient.AsyncHTTPClient()
+    mntner_info = client.fetch(dn42repo_base + "/data/mntner/" + mntner, headers = {'User-agent': 'your bot 0.2'})
+    ret = proc_data(mntner_info.body)
     if "auth" not in ret:
         ret["auth"] = []
     return ret
 
-def get_auth_method(mntner):
-    authes = get_mntner_info(mntner)["auth"]
+async def get_auth_method(mntner):
+    authes = await get_mntner_info(mntner)["auth"]
     ret = []
     for a in authes:
         ainfo = a.split(" ",1)
@@ -465,7 +465,7 @@ def get_key_default(D,k,d):
 def qsd2d(qsd):
     return {k:v[0] for k,v in qsd.items()}
 
-def action(paramaters):
+async def action(paramaters):
     paramaters["action"]           = get_key_default(paramaters,"action","OK")
     paramaters["peer_plaintext"]   = get_key_default(paramaters,"peer_plaintext","")
     paramaters["peer_signature"]   = get_key_default(paramaters,"peer_signature","")
@@ -525,7 +525,7 @@ def action(paramaters):
             paramaters["PeerID"] = None
             return get_err_page(paramaters,"Success! ","Profile deleted:<br><br>" + yaml.dump(peerInfo,sort_keys=False).replace("\n","<br>"))
         elif action=="Get Signature":
-            return get_signature_html(dn42repo_base,paramaters)
+            return await get_signature_html(dn42repo_base,paramaters)
         elif action == "Register":
             verify_user_signature(paramaters["peerASN"],paramaters["peer_plaintext"],paramaters["peer_signature"])
             paramaters = check_reg_paramater(paramaters)
@@ -550,11 +550,11 @@ class actionHandler(tornado.web.RequestHandler):
         self.set_header('x-powered-by','PHP/5.4.2')
     async def get(self, *args, **kwargs): 
         paramaters = { k: self.get_argument(k) for k in self.request.arguments }
-        ret = action(paramaters)
+        ret = await action(paramaters)
         self.write(ret)
     async def post(self, *args, **kwargs): 
         paramaters = { k: self.get_argument(k) for k in self.request.arguments }
-        ret = action(paramaters)
+        ret = await action(paramaters)
         self.write(ret)
     
 if __name__ == '__main__':
