@@ -415,6 +415,12 @@ def newConfig(paramaters):
     myasn = paramaters["myASN"][2:]
     privkey = my_config["myWG_Pri_Key"]
     publkey = paramaters["myWG_Pub_Key"]
+    
+    if peerKey == None or len(peerKey) == 0:
+        raise ValueError("Peer WG_Pub_Key can't be null")
+    if peerName == None or len(peerName) == 0:
+        raise ValueError("Peer contact can't be null")
+    
     portlist = list(sorted(map(lambda x:int(x.split("-")[0]),filter(lambda x:x[-4:] == "conf", os.listdir(wgconfpath)))))
     # portlist=[23001, 23002, 23003,23004,23005,23006,23007,23008,23009,23088]
     if myport == None:
