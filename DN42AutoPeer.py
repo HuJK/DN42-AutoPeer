@@ -275,8 +275,8 @@ def verify_user_signature(peerASN,plaintext,signature_base64):
         raise ValueError("JWT verification failed. You are not the mntner of " + sig_info["ASN"])
     supported_method= ["ssh-rsa"]
     signature_base64 = signature_base64.replace("\n","").replace("\r","")
-    mntner = get_mntner_from_asn(peerASN)
-    authes = get_auth_method(mntner)
+    mntner = await get_mntner_from_asn(peerASN)
+    authes = await get_auth_method(mntner)
     tried = False
     authresult = []
     for method,pub_key in authes:
