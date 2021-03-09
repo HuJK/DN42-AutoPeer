@@ -8,5 +8,6 @@
 	"dn42repo_base": "https://raw.githubusercontent.com/KusakabeSi/dv42-registry/main",
 	"DN42_valid_ipv4": "172.20.0.0/14",
 	"DN42_valid_ipv6": "fd00::/8",
-	"valid_ipv6_linklocal": "fe80::/10"
+	"valid_ipv6_linklocal": "fe80::/10",
+	"wg_port_search_range" : ["lambda peerASN:int(peerASN[-5:])","lambda peerASN:int(peerASN[-5:]) + 100"]
 }
