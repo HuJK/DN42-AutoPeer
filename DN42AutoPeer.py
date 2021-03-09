@@ -349,10 +349,14 @@ input[type="text"] {{
 
 def check_valid_ip_range(IPclass,IPranges,ip,name):
     sum = 0
+    if "/" in ip:
+        raise ValueError(ip + " is not a valid IPv4 or IPv6 address")
+    IPclass(ip).num_addresses != 1:
+        raise ValueError(ip + " contains more than one IP")
     for iprange in IPranges:
         if IPclass(iprange).supernet_of(IPclass(ip)):
             return True
-    raise ValueError("Not a valid " + name + " address")
+    raise ValueError(ip + " is not a valid " + name + " address")
     
 
 async def check_reg_paramater(paramaters):
