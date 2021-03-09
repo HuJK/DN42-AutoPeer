@@ -308,7 +308,7 @@ async def verify_user_signature(peerASN,plaintext,raw_signature):
             except Exception as e:
                 authresult += [{"Method": method , "Result": type(e).__name__ + ": " + str(e), "Content":  pub_key}]
         raise ValueError(yaml.dump(authresult, sort_keys=False))
-    catch Exception as e:
+    except Exception as e:
         r.__name__ = "SignatureError: " + r.__name__
         raise r
 
