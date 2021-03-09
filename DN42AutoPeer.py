@@ -42,9 +42,13 @@ valid_ipv6_lilo = IPv6Network(my_config["valid_ipv6_linklocal"])
 method_hint = {"ssh-rsa":"""
 <h4>Paste following command to your terminal to get your signature.</h4>
 <code>
+# copy your ssh private key to ~/.ssh/id_rsa_tosign<br>
 cp ~/.ssh/id_rsa ~/.ssh/id_rsa_tosign<br>
+# convert the private key from RFC4716 into PEM format<br>
 ssh-keygen -p -N "" -m pem -f ~/.ssh/id_rsa_tosign<br>
+# sign message with your private key, then convert to base64 form<br>
 echo -n "{text2sign}"  | openssl dgst -sign ~/.ssh/id_rsa_tosign | openssl base64<br>
+# Delete converted private key<br>
 rm ~/.ssh/id_rsa_tosign<br>
 </code>"""}
 
