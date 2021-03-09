@@ -3,6 +3,7 @@
     "listen_host": "0.0.0.0",
     "listen_port": 4242,
     "ssl_options": null,
+    "myWG_Pri_Key": "",
     "wgconfpath": "/root/dn42",
     "bdconfpath": "/etc/bird/peers",
     "dn42_whois_server": "172.22.0.43:43",
