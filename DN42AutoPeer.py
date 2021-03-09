@@ -592,7 +592,7 @@ async def action(paramaters):
                 "My WG Public Key":paramaters["myWG_Pub_Key"],
                 "My Telegram ID":  paramaters["myContact"]
             }
-            return get_err_page(paramaters,"Peer Success! My peer info:",yaml.dump(myInfo, sort_keys=False))
+            return get_err_page(paramaters,"Peer Success! My info:",yaml.dump(myInfo, sort_keys=False))
         return get_err_page(paramaters,"Error",ValueError("Unknow action" + str(action)))
     except Exception as e:
         return get_err_page(paramaters,"Error",e)
