@@ -269,7 +269,7 @@ def verify_signature(plaintext,pub_key,signature_base64,method):
     raise NotImplementedError("method not implement")
     return False
 
-def verify_user_signature(peerASN,plaintext,signature_base64):
+async def verify_user_signature(peerASN,plaintext,signature_base64):
     sig_info = jwt.decode(plaintext.encode("utf8"),jwt_secret)
     if sig_info["ASN"] != peerASN:
         raise ValueError("JWT verification failed. You are not the mntner of " + sig_info["ASN"])
@@ -517,7 +517,7 @@ async def action(paramaters):
             paramaters["peerASN"] = f"AS{int(paramaters['peerASN'])}"
         #Actions need ASN
         if action=="Delete":
-            verify_user_signature(paramaters["peerASN"],paramaters["peer_plaintext"],paramaters["peer_signature"])
+            await verify_user_signature(paramaters["peerASN"],paramaters["peer_plaintext"],paramaters["peer_signature"])
             peerInfo = yaml.load(open(wgconfpath + "/" + paramaters["PeerID"] + ".yaml").read())
             if peerInfo["peerASN"] != paramaters["peerASN"]:
                 raise PermissionError("peerASN not match")
@@ -527,7 +527,7 @@ async def action(paramaters):
         elif action=="Get Signature":
             return await get_signature_html(dn42repo_base,paramaters)
         elif action == "Register":
-            verify_user_signature(paramaters["peerASN"],paramaters["peer_plaintext"],paramaters["peer_signature"])
+            await verify_user_signature(paramaters["peerASN"],paramaters["peer_plaintext"],paramaters["peer_signature"])
             paramaters = check_reg_paramater(paramaters)
             new_config = newConfig(paramaters)
             paramaters = new_config["paramaters"]
