@@ -577,7 +577,16 @@ async def action(paramaters):
             del new_config["paramaters"]
             saveConfig(new_config)
             paramaters = {**paramaters, **my_paramaters}
-            return get_html(paramaters,peerSuccess=True)
+            myInfo = {
+                "My ASN":          paramaters["myASN"]
+                "DN42 IPv4":       paramaters["myIPV4"]
+                "DN42 IPv6":       paramaters["myIPV6"]
+                "IPv6 Link local": paramaters["myIPV6LL"]
+                "Endpoint Address":paramaters["myHost"] + "+" + paramaters["PeerID"]
+                "My WG Public Key":paramaters["myWG_Pub_Key"]
+                "My Telegram ID":  paramaters["myContact"]
+            }
+            return get_err_page(paramaters,"Peer Success! My peer info:",yaml.dump(myInfo, sort_keys=False))
         return get_err_page(paramaters,"Error",ValueError("Unknow action" + str(action)))
     except Exception as e:
         return get_err_page(paramaters,"Error",e)
