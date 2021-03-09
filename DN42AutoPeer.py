@@ -582,7 +582,7 @@ async def action(paramaters):
                 "DN42 IPv4":       paramaters["myIPV4"],
                 "DN42 IPv6":       paramaters["myIPV6"],
                 "IPv6 Link local": paramaters["myIPV6LL"],
-                "Endpoint Address":paramaters["myHost"] + "+" + str(paramaters["PeerID"]),
+                "Endpoint Address":paramaters["myHost"] + ":" + str(paramaters["PeerID"]),
                 "My WG Public Key":paramaters["myWG_Pub_Key"],
                 "My Telegram ID":  paramaters["myContact"]
             }
