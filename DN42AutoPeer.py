@@ -413,7 +413,7 @@ def newConfig(paramaters):
     myIPV6LL = paramaters["myIPV6LL"]
     myhost = paramaters["myHost"]
     myasn = paramaters["myASN"][2:]
-    privkey = paramaters["myWG_Pri_Key"]
+    privkey = my_config["myWG_Pri_Key"]
     publkey = paramaters["myWG_Pub_Key"]
     portlist = list(sorted(map(lambda x:int(x.split("-")[0]),filter(lambda x:x[-4:] == "conf", os.listdir(wgconfpath)))))
     # portlist=[23001, 23002, 23003,23004,23005,23006,23007,23008,23009,23088]
