@@ -578,12 +578,12 @@ async def action(paramaters):
             saveConfig(new_config)
             paramaters = {**paramaters, **my_paramaters}
             myInfo = {
-                "My ASN":          paramaters["myASN"]
-                "DN42 IPv4":       paramaters["myIPV4"]
-                "DN42 IPv6":       paramaters["myIPV6"]
-                "IPv6 Link local": paramaters["myIPV6LL"]
-                "Endpoint Address":paramaters["myHost"] + "+" + paramaters["PeerID"]
-                "My WG Public Key":paramaters["myWG_Pub_Key"]
+                "My ASN":          paramaters["myASN"],
+                "DN42 IPv4":       paramaters["myIPV4"],
+                "DN42 IPv6":       paramaters["myIPV6"],
+                "IPv6 Link local": paramaters["myIPV6LL"],
+                "Endpoint Address":paramaters["myHost"] + "+" + paramaters["PeerID"],
+                "My WG Public Key":paramaters["myWG_Pub_Key"],
                 "My Telegram ID":  paramaters["myContact"]
             }
             return get_err_page(paramaters,"Peer Success! My peer info:",yaml.dump(myInfo, sort_keys=False))
