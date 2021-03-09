@@ -5,6 +5,8 @@ import jwt
 import time
 import yaml
 import json
+import random
+import string
 import socket
 import base64
 import hashlib
@@ -21,27 +23,21 @@ from ipaddress import IPv4Network
 from ipaddress import IPv6Network
 from tornado.httpclient import HTTPClientError
 
+my_paramaters = json.loads(open("my_parameters.json").read())
+my_config = json.loads(open("my_config.json").read())
 
-jwt_secret = hashlib.md5(open(os.path.expanduser("~") + "/.ssh/id_rsa").read().encode('utf-8')).hexdigest()
-my_paramaters = {
-    "myIPV4": "",
-    "myIPV6": "",
-    "myIPV6LL": "",
-    "myHost": "",
-    "myASN": "AS4242420000",
-    "myContact": "",
-    "myWG_Pri_Key": "",
-    "myWG_Pub_Key": ""
-}
+if my_config["jwt_secret"] == None:
+    my_config["jwt_secret"] = ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(32))
+    open("my_config.json","w").write(json.dumps(my_config,indent=4,ensure_ascii=False))
+jwt_secret = my_config["jwt_secret"]
 
-
-wgconfpath = "/root/dn42"
-bdconfpath = "/etc/bird/peers"
+wgconfpath = my_config["wgconfpath"]
+bdconfpath = my_config["bdconfpath"]
 client_valid_keys = ["peer_plaintext","peer_signature", "peerASN", "hasIPV4", "peerIPV4", "hasIPV6", "peerIPV6", "hasIPV6LL", "peerIPV6LL", "hasHost", "peerHost", "peerWG_Pub_Key", "peerContact", "PeerID"]
-dn42repo_base = "https://raw.githubusercontent.com/KusakabeSi/dv42-registry/main"
-DN42_valid_ipv4 = IPv4Network("172.20.0.0/14")
-DN42_valid_ipv6 = IPv6Network("fd00::/8")
-valid_ipv6_lilo = IPv6Network("fe80::/10")
+dn42repo_base = my_config["dn42repo_base"]
+DN42_valid_ipv4 = IPv4Network(my_config["DN42_valid_ipv4"])
+DN42_valid_ipv6 = IPv6Network(my_config["DN42_valid_ipv6"])
+valid_ipv6_lilo = IPv6Network(my_config["valid_ipv6_linklocal"])
 
 method_hint = {"ssh-rsa":"""
 <h4>Paste following command to your terminal to get your signature.</h4>
@@ -126,7 +122,7 @@ input[type="text"] {{
         elif v == True:
             v = "on"
         retstr += f'<input type="hidden" name="{k}" value="{v}">\n'
-    retstr +="""<input type="submit" name="action" value="Back" />
+    retstr +="""<input type="submit" name="action" value="OK" />
 </form>
 
 </body>
@@ -292,6 +288,7 @@ def get_err_page(paramaters,level,error):
 * {{
     font-family: "Lucida Console", "Courier New", monospace;
 }}
+code {{display: block; /* fixes a strange ie margin bug */font-family: Courier New;font-size: 11pt;overflow:auto;background: #f0f0f0 url(data:image/gif;base64,iVBORw0KGgoAAAANSUhEUgAAAAsAAASwCAYAAAAt7rCDAAAABHNCSVQICAgIfAhkiAAAAQJJREFUeJzt0kEKhDAMBdA4zFmbM+W0upqFOhXrDILwsimFR5pfMrXW5jhZr7PwRlxVX8//jNHrGhExjXzdu9c5IiIz+7iqVmB7Hwp4OMa2nhhwN/PRGEMBh3Zjt6KfpzPztxW9MSAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzB8HS+J9kUTvzEDMwAAAABJRU5ErkJggg==) left top repeat-y;border: 10px solid white;padding: 10px 10px 10px 21px;max-height:1000px;line-height: 1.2em;}}
 table {{
   table-layout: auto;
   width: 100%;
@@ -304,9 +301,8 @@ input[type="text"] {{
 
 <h2>DN42 Automatic Peering</h2>
 <h3>{level}</h3>
-<h5>{type(error).__name__ if type(error) != str else ""}: {str(error)}</h5>
-</table>
-<br>
+{"<h5>" + type(error).__name__ + ":</h5>" if type(error) != str else ""}
+<code><pre>{str(error)}</pre></code>
 <form action="/action_page.php" method="post">\n"""
     paramaters = { valid_key: paramaters[valid_key] for valid_key in client_valid_keys }
     for k,v in paramaters.items():
@@ -315,7 +311,7 @@ input[type="text"] {{
         elif v == True:
             v = "on"
         retstr += f'<input type="hidden" name="{k}" value="{v}">\n'
-    retstr +="""<input type="submit" name="action" value="Back" />
+    retstr +="""<input type="submit" name="action" value="OK" />
 </form>
 
 </body>
@@ -471,7 +467,7 @@ def qsd2d(qsd):
     return {k:v[0] for k,v in qsd.items()}
 
 def action(paramaters):
-    paramaters["action"]           = get_key_default(paramaters,"action","Back")
+    paramaters["action"]           = get_key_default(paramaters,"action","OK")
     paramaters["peer_plaintext"]   = get_key_default(paramaters,"peer_plaintext","")
     paramaters["peer_signature"]   = get_key_default(paramaters,"peer_signature","")
     paramaters["peerASN"]          = get_key_default(paramaters,"peerASN",None)
@@ -497,7 +493,7 @@ def action(paramaters):
         if paramaters["PeerID"] != None:
             if int(paramaters["PeerID"]) <= 1024 or int(paramaters["PeerID"]) > 65535:
                 raise ValueError("Invalid PeerID")
-        if action=="Back":
+        if action=="OK":
             if paramaters["peerASN"] == None:
                 paramaters["hasIPV4"] = True 
                 paramaters["hasIPV6"] = True 
@@ -561,6 +557,6 @@ if __name__ == '__main__':
         (r'/action_page.php', actionHandler),
         
     ])
-    server = tornado.httpserver.HTTPServer(app)
-    server.listen(4242)
+    server = tornado.httpserver.HTTPServer(app, ssl_options=my_config["ssl_options"] )
+    server.listen(my_config["listen_port"],my_config["listen_host"])
     tornado.ioloop.IOLoop.current().start()
