@@ -367,15 +367,15 @@ async def check_reg_paramater(paramaters):
     if paramaters["hasIPV4"]:
         check_valid_ip_range(IPv4Network,DN42_valid_ipv4s,paramaters["peerIPV4"],"DN42 ip")
         peerIPV4_info = proc_data((await whois_query(dn42_whois_server,paramaters["peerIPV4"]))[-1])
-        if peerIPV4_info["mnt-by"] != mntner:
-            raise PermissionError("IP " + paramaters["peerIPV4"] + " owned by " + peerIPV4_info["mnt-by"])
+        if peerIPV4_info["mnt-by"][0] != mntner:
+            raise PermissionError("IP " + paramaters["peerIPV4"] + " owned by " + peerIPV4_info["mnt-by"][0])
     else:
         paramaters["peerIPV4"] = None
     if paramaters["hasIPV6"]:
         check_valid_ip_range(IPv6Network,DN42_valid_ipv6,paramaters["peerIPV6"],"DN42 ipv6")
         peerIPV6_info = proc_data((await whois_query(dn42_whois_server,paramaters["peerIPV6"]))[-1])
-        if peerIPV6_info["mnt-by"] != mntner:
-            raise PermissionError("IP " + paramaters["peerIPV6"] + " owned by " + peerIPV6_info["mnt-by"])
+        if peerIPV6_info["mnt-by"][0] != mntner:
+            raise PermissionError("IP " + paramaters["peerIPV6"] + " owned by " + peerIPV6_info["mnt-by"][0])
     else:
         paramaters["peerIPV6"] = None
     if paramaters["hasIPV6LL"]:
