@@ -330,7 +330,7 @@ input[type="text"] {{
 
 <h2>DN42 Automatic Peering</h2>
 <h3>{level}</h3>
-{"<h5>" + type(error).__name__ + ":</h5>" if type(error) != str else ""}
+{"<h4>" + type(error).__name__ + ":</h4>" if type(error) != str else ""}
 <code><pre>{str(error)}</pre></code>
 <form action="/action_page.php" method="post">\n"""
     paramaters = { valid_key: paramaters[valid_key] for valid_key in client_valid_keys }
