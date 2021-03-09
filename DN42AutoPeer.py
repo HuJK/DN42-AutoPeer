@@ -249,7 +249,7 @@ async def get_mntner_info(mntner):
     return ret
 
 async def get_auth_method(mntner):
-    authes = await get_mntner_info(mntner)["auth"]
+    authes = (await get_mntner_info(mntner))["auth"]
     ret = []
     for a in authes:
         ainfo = a.split(" ",1)
