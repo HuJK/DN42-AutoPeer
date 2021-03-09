@@ -368,7 +368,8 @@ def newConfig(paramaters):
     portlist = list(sorted(map(lambda x:int(x.split("-")[0]),filter(lambda x:x[-4:] == "conf", os.listdir(wgconfpath)))))
     # portlist=[23001, 23002, 23003,23004,23005,23006,23007,23008,23009,23088]
     if myport == None:
-        for p in range(int(peerASN[-5:]),25000):
+        port_range = [eval(my_config["wg_port_search_range"][0])(peerASN) , eval(my_config["wg_port_search_range"][1])(peerASN)]
+        for p in range(*port_range):
             if p not in portlist:
                 myport = p
                 break
@@ -519,6 +520,7 @@ def action(paramaters):
             if peerInfo["peerASN"] != paramaters["peerASN"]:
                 raise PermissionError("peerASN not match")
             deleteConfig(peerInfo["PeerID"],peerInfo["peerName"])
+            paramaters["PeerID"] = None
             return get_err_page(paramaters,"Success! ","Profile deleted:<br><br>" + yaml.dump(peerInfo,sort_keys=False).replace("\n","<br>"))
         elif action=="Get Signature":
             return get_signature_html(dn42repo_base,paramaters)
