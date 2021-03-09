@@ -293,14 +293,14 @@ def verify_signature(plaintext,pub_key,raw_signature,method):
 
 async def verify_user_signature(peerASN,plaintext,raw_signature):
     try:
-    sig_info = jwt.decode(plaintext.encode("utf8"),jwt_secret)
-    if sig_info["ASN"] != peerASN:
-        raise ValueError("JWT verification failed. You are not the mntner of " + sig_info["ASN"])
-    supported_method= ["ssh-rsa"]
-    mntner = await get_mntner_from_asn(peerASN)
-    authes = await get_auth_method(mntner)
-    tried = False
-    authresult = [{"Your input":{"plaintext":plaintext,"signature":raw_signature}}]
+        sig_info = jwt.decode(plaintext.encode("utf8"),jwt_secret)
+        if sig_info["ASN"] != peerASN:
+            raise ValueError("JWT verification failed. You are not the mntner of " + sig_info["ASN"])
+        supported_method= ["ssh-rsa"]
+        mntner = await get_mntner_from_asn(peerASN)
+        authes = await get_auth_method(mntner)
+        tried = False
+        authresult = [{"Your input":{"plaintext":plaintext,"signature":raw_signature}}]
         for method,pub_key in authes:
             try:
                 if verify_signature(plaintext,pub_key,raw_signature,method) == True:
