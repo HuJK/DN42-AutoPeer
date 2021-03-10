@@ -3,6 +3,7 @@ import os
 import re
 import jwt
 import time
+import pgpy
 import yaml
 import json
 import asyncio
@@ -34,26 +35,42 @@ jwt_secret = my_config["jwt_secret"]
 
 wgconfpath = my_config["wgconfpath"]
 bdconfpath = my_config["bdconfpath"]
-client_valid_keys = ["peer_plaintext","peer_signature", "peerASN", "hasIPV4", "peerIPV4", "hasIPV6", "peerIPV6", "hasIPV6LL", "peerIPV6LL", "hasHost", "peerHost", "peerWG_Pub_Key", "peerContact", "PeerID"]
+client_valid_keys = ["peer_plaintext","peer_pub_key_pgp","peer_signature", "peerASN", "hasIPV4", "peerIPV4", "hasIPV6", "peerIPV6", "hasIPV6LL", "peerIPV6LL", "hasHost", "peerHost", "peerWG_Pub_Key", "peerContact", "PeerID"]
 dn42_whois_server = my_config["dn42_whois_server"]
 dn42repo_base = my_config["dn42repo_base"]
 DN42_valid_ipv4s = my_config["DN42_valid_ipv4s"]
 DN42_valid_ipv6s = my_config["DN42_valid_ipv6s"]
 valid_ipv6_lilos = my_config["valid_ipv6_linklocals"]
 
-method_hint = {"ssh-rsa":"""
-<h4>Paste following command to your terminal to get your signature.</h4>
+method_hint = {"ssh-rsa":"""<h4>Paste following command to your terminal to get your signature.</h4>
 <code>
 # copy your ssh private key to ~/.ssh/id_rsa_tosign<br>
 cp ~/.ssh/id_rsa ~/.ssh/id_rsa_tosign<br>
+<br>
 # convert the private key from RFC4716 into PEM format<br>
+<br>
 ssh-keygen -p -N "" -m pem -f ~/.ssh/id_rsa_tosign<br>
 # sign message with your private key, then convert to base64 form<br>
+<br>
 echo -n "{text2sign}"  | openssl dgst -sign ~/.ssh/id_rsa_tosign | openssl base64<br>
 # Delete converted private key<br>
+<br>
 rm ~/.ssh/id_rsa_tosign<br>
 # Done. You can copy the signature now<br>
-</code>"""}
+</code>""",
+
+"pgp-fingerprint": """<h4>Paste following command to your terminal to get your PGP public key and signature.</h4>
+<code>
+# Export PGP public key<br>
+gpg --armor --export<br>
+<br>
+# sign message with your PGP private key<br>
+echo -n "{text2sign}" | gpg --clearsign --detach-sign<br>
+<br>
+# Done. You can copy the signature now<br>
+</code>
+                 peer_pub_key_pgp"""
+}
 
 async def get_signature_html(baseURL,paramaters):
     peerASN = paramaters["peerASN"]
@@ -81,7 +98,6 @@ table {{
   table-layout: fixed;
   width: 100%;
 }}
-
 table td {{
     word-wrap: break-word;         /* All browsers since IE 5.5+ */
     overflow-wrap: break-word;     /* Renamed property in CSS3 draft spec */
@@ -95,7 +111,6 @@ input[type="text"] {{
 }}
 </style>
 <body>
-
 <h2>DN42 Automatic Peering</h2>
 """
     if len(methods_class["Supported"]) == 0:
@@ -131,7 +146,6 @@ input[type="text"] {{
         retstr += f'<input type="hidden" name="{k}" value="{v}">\n'
     retstr +="""<input type="submit" name="action" value="OK" />
 </form>
-
 </body>
 </html>
 """
@@ -141,6 +155,7 @@ input[type="text"] {{
 
 def get_html(paramaters,peerSuccess=False):
     peer_plaintext = paramaters["peer_plaintext"]
+    peer_pub_key_pgp = paramaters["peer_pub_key_pgp"]
     peer_signature = paramaters["peer_signature"]
     peerASN = paramaters["peerASN"]
     hasIPV4 = paramaters["hasIPV4"]
@@ -182,15 +197,14 @@ textarea {{
 }}
 </style>
 <body>
-
 <h2>DN42 Automatic Peering</h2>
 <h3>{"Peer success! " if peerSuccess else "Please fill "}Your Info</h3>
-
 <form action="/action_page.php" method="post">
  <table>
    <tr><td>Your ASN</td><td><input type="text" value="{peerASN if peerASN != None else ""}" name="peerASN" /></td></tr>
    <tr><td></td><td><input type="submit" name="action" value="Get Signature" /></td></tr>
    <tr><td>Plain text to sign</td><td><input type="text" value="{peer_plaintext}" name="peer_plaintext" readonly/></textarea></td></tr>
+   <tr><td>Your PGP public key<br>(leave it blank if don't use PGP)</td><td><textarea name="peer_pub_key_pgp">{peer_pub_key_pgp}</textarea></td></tr>
    <tr><td>Your signature</td><td><textarea name="peer_signature">{peer_signature}</textarea></td></tr>
    <tr><td><input type="checkbox" name="hasIPV4" {"checked" if hasIPV4 else ""}>DN42 IPv4</td><td><input type="text" value="{peerIPV4 if peerIPV4 != None else ""}" name="peerIPV4" /></td></tr>
    <tr><td><input type="checkbox" name="hasIPV6" {"checked" if hasIPV6 else ""}>DN42 IPv6</td><td><input type="text" value="{peerIPV6 if peerIPV6 != None else ""}" name="peerIPV6" /></td></tr>
@@ -198,17 +212,13 @@ textarea {{
    <tr><td>Connectrion Info: </td><td>  </td></tr>
    <tr><td><input type="checkbox" name="hasHost" {"checked" if hasHost else ""}>Your Clearnet Host</td><td><input type="text" value="{peerHost if peerHost != None else ""}" name="peerHost" /></td></tr>
    <tr><td>Your WG Public Key</td><td><input type="text" value="{peerWG_Pub_Key}" name="peerWG_Pub_Key" /></td></tr>
-   <tr><td>Your Telegram ID</td><td><input type="text" value="{peerContact}" name="peerContact" /></td></tr>
+   <tr><td>Your Telegram ID or e-mail</td><td><input type="text" value="{peerContact}" name="peerContact" /></td></tr>
    <tr><td><input type="submit" name="action" value="Register" /></td><td>Register a new peer to get Peer ID</td></tr>
    <tr><td>Your Peer ID</td><td><input type="text" value="{PeerID if PeerID != None else ""}" name="PeerID" /></td></tr>
    <tr><td><input type="submit" name="action" value="Get Info" /><input type="submit" name="action" value="Delete" /></td><td>Get the info of an existening peer or delete it.</td></tr>
  </table>
 </form>
-
-
 <h3>{"Peer success! " if peerSuccess else "This is "}My Info</h3>
-
-
 <form method="post">
  <table>
    <tr><td>My ASN</td><td><input type="text" value="{myASN}" readonly /></td></tr>
@@ -221,7 +231,6 @@ textarea {{
    <tr><td>My Telegram ID</td><td><input type="text" value="{myContact}" readonly /></td></tr>
  </table>
 </form>
-
 </body>
 </html>
 """
@@ -280,18 +289,35 @@ async def get_auth_method(mntner):
         ret += [ainfo]
     return ret
 
-def verify_signature(plaintext,pub_key,raw_signature,method):
+
+def verify_signature_pgp(plaintext,fg,pub_key,raw_signature):
+    pub = pgpy.PGPKey.from_blob(pub_key.encode("utf8"))[0]
+    fg_in = fg.replace(" ","")
+    fg_p = pub.fingerprint.replace(" ","")
+    if fg_in != fg_p:
+        raise ValueError("fingerprint not match")
+    sig = pgpy.PGPSignature.from_blob(raw_signature.encode("utf8"))
+    if not pub.verify(plaintext,sig):
+        raise ValueError("signature verification failed")
+    return True
+  
+def verify_signature_ssh(plaintext,pub_key,raw_signature):
+    signature_base64 = raw_signature.replace("\n","").replace("\r","")
+    signature = base64.b64decode(signature_base64)
+    ppp = OpenSSL.crypto.X509()
+    pkk = OpenSSL.crypto.load_publickey(OpenSSL.crypto.FILETYPE_PEM, RSA.importKey("ssh-rsa " + pub_key).exportKey())
+    ppp.set_pubkey(pkk)
+    OpenSSL.crypto.verify(cert=ppp,signature=signature,data = plaintext.encode("utf8"), digest = "sha256")
+    return True
+
+def verify_signature(plaintext,pub_key,pub_key_pgp,raw_signature,method):
     if method=="ssh-rsa":
-        signature_base64 = raw_signature.replace("\n","").replace("\r","")
-        signature = base64.b64decode(signature_base64)
-        ppp = OpenSSL.crypto.X509()
-        pkk = OpenSSL.crypto.load_publickey(OpenSSL.crypto.FILETYPE_PEM, RSA.importKey("ssh-rsa " + pub_key).exportKey())
-        ppp.set_pubkey(pkk)
-        OpenSSL.crypto.verify(cert=ppp,signature=signature,data = plaintext.encode("utf8"), digest = "sha256")
-        return True
+        return verify_signature_ssh(plaintext,pub_key,raw_signature)
+    elif method=="pgp-fingerprint":
+        return verify_signature_pgp(plaintext,pub_key,pub_key_pgp,raw_signature)
     raise NotImplementedError("method not implement")
 
-async def verify_user_signature(peerASN,plaintext,raw_signature):
+async def verify_user_signature(peerASN,plaintext,pub_key_pgp,raw_signature):
     try:
         sig_info = jwt.decode(plaintext.encode("utf8"),jwt_secret)
         if sig_info["ASN"] != peerASN:
@@ -300,10 +326,10 @@ async def verify_user_signature(peerASN,plaintext,raw_signature):
         mntner = await get_mntner_from_asn(peerASN)
         authes = await get_auth_method(mntner)
         tried = False
-        authresult = [{"Your input":{"plaintext":plaintext,"signature":raw_signature}}]
+        authresult = [{"Your input":{"plaintext":plaintext,"signature":raw_signature,"pub_key_pgp":pub_key_pgp}}]
         for method,pub_key in authes:
             try:
-                if verify_signature(plaintext,pub_key,raw_signature,method) == True:
+                if verify_signature(plaintext,pub_key,pub_key_pgp,raw_signature,method) == True:
                     return True
             except Exception as e:
                 authresult += [{"Method": method , "Result": type(e).__name__ + ": " + str(e), "Content":  pub_key}]
@@ -332,7 +358,6 @@ input[type="text"] {{
 }}
 </style>
 <body>
-
 <h2>DN42 Automatic Peering</h2>
 <h3>{level}</h3>
 {"<h3>" + type(error).__name__ + ":</h3>" if type(error) != str else ""}
@@ -347,7 +372,6 @@ input[type="text"] {{
         retstr += f'<input type="hidden" name="{k}" value="{v}">\n'
     retstr +="""<input type="submit" name="action" value="OK" />
 </form>
-
 </body>
 </html>"""
     return retstr
@@ -387,7 +411,6 @@ async def check_reg_paramater(paramaters):
         check_valid_ip_range(IPv6Network,valid_ipv6_lilos,paramaters["peerIPV6LL"],"link-local ipv6")
     else:
         paramaters["peerIPV6LL"] = None
-    print(paramaters["hasHost"])
     if paramaters["hasHost"]:
         if ":" not in paramaters["peerHost"]:
             raise ValueError("Parse Error, Host must looks like address:port .")
@@ -417,9 +440,9 @@ def newConfig(paramaters):
     publkey = paramaters["myWG_Pub_Key"]
     
     if peerKey == None or len(peerKey) == 0:
-        raise ValueError("Peer WG_Pub_Key can't be null")
+        raise ValueError('"Your WG Public Key" can\'t be null.')
     if peerName == None or len(peerName) == 0:
-        raise ValueError("Peer contact can't be null")
+        raise ValueError('"Your Telegram ID or e-mail" can\'t be null.')
     
     portlist = list(sorted(map(lambda x:int(x.split("-")[0]),filter(lambda x:x[-4:] == "conf", os.listdir(wgconfpath)))))
     # portlist=[23001, 23002, 23003,23004,23005,23006,23007,23008,23009,23088]
@@ -439,7 +462,6 @@ def newConfig(paramaters):
     wsconf = f"""[Interface]
 PrivateKey = {privkey}
 ListenPort = {myport}
-
 [Peer]
 PublicKey = {peerKey} {chr(10) + "Endpoint = " + peerHost if peerHost != None else ""}
 AllowedIPs = 0.0.0.0/0,::/0"""
@@ -468,6 +490,7 @@ ip route add {peerIPV6}/128 src {myIPV6} dev dn42-{peerName}""" if peerIPV6 != N
     
     paramaters = { valid_key: paramaters[valid_key] for valid_key in client_valid_keys }
     paramaters["peer_signature"] = ""
+    paramaters["peer_pub_key_pgp"] = ""
     paramaters["peer_plaintext"] = ""
     paramaters["peerName"] = peerName
     return {
@@ -517,6 +540,7 @@ def qsd2d(qsd):
 async def action(paramaters):
     paramaters["action"]           = get_key_default(paramaters,"action","OK")
     paramaters["peer_plaintext"]   = get_key_default(paramaters,"peer_plaintext","")
+    paramaters["peer_pub_key_pgp"]   = get_key_default(paramaters,"peer_pub_key_pgp","")
     paramaters["peer_signature"]   = get_key_default(paramaters,"peer_signature","")
     paramaters["peerASN"]          = get_key_default(paramaters,"peerASN",None)
     paramaters["hasIPV4"]          = get_key_default(paramaters,"hasIPV4",False)
@@ -566,7 +590,7 @@ async def action(paramaters):
             aaa = int(paramaters['peerASN'])
         #Actions need ASN
         if action=="Delete":
-            await verify_user_signature(paramaters["peerASN"],paramaters["peer_plaintext"],paramaters["peer_signature"])
+            await verify_user_signature(paramaters["peerASN"],paramaters["peer_plaintext"],paramaters["peer_pub_key_pgp"],paramaters["peer_signature"])
             peerInfo = yaml.load(open(wgconfpath + "/" + paramaters["PeerID"] + ".yaml").read())
             if peerInfo["peerASN"] != paramaters["peerASN"]:
                 raise PermissionError("peerASN not match")
@@ -576,7 +600,7 @@ async def action(paramaters):
         elif action=="Get Signature":
             return await get_signature_html(dn42repo_base,paramaters)
         elif action == "Register":
-            await verify_user_signature(paramaters["peerASN"],paramaters["peer_plaintext"],paramaters["peer_signature"])
+            await verify_user_signature(paramaters["peerASN"],paramaters["peer_plaintext"],paramaters["peer_pub_key_pgp"],paramaters["peer_signature"])
             paramaters = await check_reg_paramater(paramaters)
             new_config = newConfig(paramaters)
             paramaters = new_config["paramaters"]
