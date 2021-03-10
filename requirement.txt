@@ -1,4 +1,5 @@
 pycryptodome
 tornado
+pyyaml
 pyjwt
 PGPy
