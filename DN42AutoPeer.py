@@ -75,7 +75,7 @@ async def get_signature_html(baseURL,paramaters):
     peerASN = paramaters["peerASN"]
     peerMNT = await get_mntner_from_asn(peerASN)
     methods = await get_auth_method(peerMNT)
-    text2sign = jwt.encode({'ASN': peerASN, "exp":datetime.datetime.utcnow() + datetime.timedelta(minute = 5) }, jwt_secret, algorithm='HS256')
+    text2sign = jwt.encode({'ASN': peerASN, "exp":datetime.datetime.utcnow() + datetime.timedelta(minutes = 5) }, jwt_secret, algorithm='HS256')
     methods_class = {"Supported":{},"Unsupported":{}}
     for m,v in methods:
         if m in method_hint:
