@@ -68,8 +68,7 @@ gpg --armor --export<br>
 echo -n "{text2sign}" | gpg --clearsign --detach-sign<br>
 <br>
 # Done. You can copy the signature now<br>
-</code>
-                 peer_pub_key_pgp"""
+</code>"""
 }
 
 async def get_signature_html(baseURL,paramaters):
