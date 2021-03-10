@@ -122,7 +122,7 @@ input[type="text"] {{
         retstr += f"""<h3>There are no any "auth" section in yout profile</h3>"""
     retstr += "<h4>Supported auth method: </h4>" if len(list(methods_class["Supported"].keys())) != 0 else ""
     for m,v in methods_class["Supported"].items():
-        retstr += f"""<table><tr><td><b>Allowed {m}s: </b></td></tr>"""
+        retstr += f"""<table><tr><td><b>Allowed {m}(s): </b></td></tr>"""
         for v_item in v:
             retstr += f"""<tr><td>{v_item}</td></tr>"""
         retstr += "</table>"
