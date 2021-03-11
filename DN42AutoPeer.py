@@ -451,6 +451,8 @@ def newConfig(paramaters):
             if p not in portlist:
                 myport = p
                 break
+    if myport == None:
+        raise IndexError("PeerID not available, contact my to peer manually. ")
     
     if peerIPV6 == None:
         peerIPV6 = peerIPV6LL
