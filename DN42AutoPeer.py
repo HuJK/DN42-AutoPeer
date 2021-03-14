@@ -322,6 +322,7 @@ async def verify_user_signature(peerASN,plaintext,pub_key_pgp,raw_signature):
         if sig_info["ASN"] != peerASN:
             raise ValueError("JWT verification failed. You are not the mntner of " + sig_info["ASN"])
         supported_method= ["ssh-rsa"]
+        # verify user signature
         mntner = await get_mntner_from_asn(peerASN)
         authes = await get_auth_method(mntner)
         tried = False
@@ -329,9 +330,19 @@ async def verify_user_signature(peerASN,plaintext,pub_key_pgp,raw_signature):
         for method,pub_key in authes:
             try:
                 if verify_signature(plaintext,pub_key,pub_key_pgp,raw_signature,method) == True:
-                    return True
+                    return mntner
             except Exception as e:
                 authresult += [{"Method": method , "Result": type(e).__name__ + ": " + str(e), "Content":  pub_key}]
+        # verify admin signature
+        mntner_admin = my_config["admin_mnt"]
+        try:
+            authes_admin = await get_auth_method(mntner_admin)
+            for method,pub_key in authes_admin:
+                try:
+                    if verify_signature(plaintext,pub_key,pub_key_pgp,raw_signature,method) == True:
+                        return mntner_admin
+        except Exception as e:
+            pass
         raise ValueError(yaml.dump(authresult, sort_keys=False))
     except Exception as e:
         class customError(type(e)):
@@ -388,7 +399,6 @@ def check_valid_ip_range(IPclass,IPranges,ip,name):
     
 
 async def check_reg_paramater(paramaters):
-    paramaters["PeerID"] = None
     if (paramaters["hasIPV4"] or paramaters["hasIPV6"] or paramaters["hasIPV6LL"]) == False:
         raise ValueError("You can't peer without any IP.")
     mntner = await get_mntner_from_asn(paramaters["peerASN"])
@@ -601,7 +611,9 @@ async def action(paramaters):
         elif action=="Get Signature":
             return await get_signature_html(dn42repo_base,paramaters)
         elif action == "Register":
-            await verify_user_signature(paramaters["peerASN"],paramaters["peer_plaintext"],paramaters["peer_pub_key_pgp"],paramaters["peer_signature"])
+            mntner = await verify_user_signature(paramaters["peerASN"],paramaters["peer_plaintext"],paramaters["peer_pub_key_pgp"],paramaters["peer_signature"])
+            if mntner != my_config["admin_mnt"]:
+                paramaters["PeerID"] = None
             paramaters = await check_reg_paramater(paramaters)
             new_config = newConfig(paramaters)
             paramaters = new_config["paramaters"]
