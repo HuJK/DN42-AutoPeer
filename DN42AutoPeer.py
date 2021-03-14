@@ -436,7 +436,7 @@ def newConfig(paramaters):
     peerASN = paramaters["peerASN"][2:]
     peerKey = paramaters["peerWG_Pub_Key"]
     peerName = paramaters["peerContact"]
-    myport=None
+    myport = paramaters["PeerID"]
     peerHost = paramaters["peerHost"]
     peerIPV4 = paramaters["peerIPV4"]
     peerIPV6 = paramaters["peerIPV6"]
