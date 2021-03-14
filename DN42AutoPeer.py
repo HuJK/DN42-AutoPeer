@@ -332,7 +332,7 @@ async def verify_user_signature(peerASN,plaintext,pub_key_pgp,raw_signature):
                 if verify_signature(plaintext,pub_key,pub_key_pgp,raw_signature,method) == True:
                     return mntner
             except Exception as e:
-                authresult += [{"Method": method , "Result": type(e).__name__ + ": " + str(e), "Content":  pub_key}]
+                authresult += [{"Source": "User credential","Method": method , "Result": type(e).__name__ + ": " + str(e), "Content":  pub_key}]
         # verify admin signature
         mntner_admin = my_config["admin_mnt"]
         try:
@@ -342,7 +342,7 @@ async def verify_user_signature(peerASN,plaintext,pub_key_pgp,raw_signature):
                     if verify_signature(plaintext,pub_key,pub_key_pgp,raw_signature,method) == True:
                         return mntner_admin
                 except Exception as e:
-                    pass
+                    authresult += [{"Source": "Admin credential", "Method": method , "Result": type(e).__name__ + ": " + str(e), "Content":  pub_key}]
         except Exception as e:
             pass
         raise ValueError(yaml.dump(authresult, sort_keys=False))
