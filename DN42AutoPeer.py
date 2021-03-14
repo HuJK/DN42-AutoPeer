@@ -341,6 +341,8 @@ async def verify_user_signature(peerASN,plaintext,pub_key_pgp,raw_signature):
                 try:
                     if verify_signature(plaintext,pub_key,pub_key_pgp,raw_signature,method) == True:
                         return mntner_admin
+                except Exception as e:
+                    pass
         except Exception as e:
             pass
         raise ValueError(yaml.dump(authresult, sort_keys=False))
