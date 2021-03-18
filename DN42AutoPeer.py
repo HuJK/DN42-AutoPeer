@@ -6,6 +6,7 @@ import time
 import pgpy
 import yaml
 import json
+import pathlib
 import asyncio
 import random
 import string
@@ -510,7 +511,7 @@ ip route add {peerIPV6}/128 src {myIPV6} dev dn42-{peerName}""" if peerIPV6 != N
     return {
         f"{wgconfpath}/{myport}-{peerName}.conf": wsconf,
         f"{wgconfpath}/{myport}-{peerName}.sh": wssh,
-        f"{wgconfpath}/{myport}.yaml": yaml.dump(paramaters),
+        f"{wgconfpath}/peerinfo/{myport}.yaml": yaml.dump(paramaters),
         f"{bdconfpath}/{myport}-{peerName}.conf": birdconf,
         "paramaters": paramaters
            }
@@ -520,6 +521,9 @@ def saveConfig(new_config):
         print("================================")
         print(path)
         print(content)
+        fileparent = pathlib.Path(__file__).parent.absolute()
+        if not os.path.isdir(dir_path):
+            os.makedirs(fileparent, mode=0o700 , exist_ok=True)
         open(path,"w").write(content)
         if path[-2:] == "sh":
             os.chmod(path, 0o755)
@@ -591,7 +595,7 @@ async def action(paramaters):
                 paramaters["hasHost"] = True 
             return get_html(paramaters,peerSuccess=False)
         if action == "Get Info":
-            peerInfo = yaml.load(open(wgconfpath + "/" + paramaters["PeerID"] + ".yaml").read())
+            peerInfo = yaml.load(open(wgconfpath + "/peerinfo/" + paramaters["PeerID"] + ".yaml").read())
             peerInfo = { valid_key: peerInfo[valid_key] for valid_key in client_valid_keys }
             paramaters = {**paramaters,**peerInfo, **my_paramaters}
             return get_html(paramaters,peerSuccess=True)
