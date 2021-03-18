@@ -464,9 +464,12 @@ def newConfig(paramaters):
             if p not in portlist:
                 myport = p
                 break
+    else:
+        myport = int(myport)
     if myport == None:
         raise IndexError("PeerID not available, contact my to peer manually. ")
-    
+    if myport in portlist:
+        raise IndexError("PeerID already exists.")
     if peerIPV6 == None:
         peerIPV6 = peerIPV6LL
     paramaters["PeerID"] = myport
@@ -517,18 +520,23 @@ ip route add {peerIPV6}/128 src {myIPV6} dev dn42-{peerName}""" if peerIPV6 != N
            }
 
 def saveConfig(new_config):
+    needexec = []
     for path,content in new_config.items():
         print("================================")
         print(path)
         print(content)
-        fileparent = pathlib.Path(__file__).parent.absolute()
-        if not os.path.isdir(dir_path):
+        fileparent = pathlib.Path(path).parent.absolute()
+        if not os.path.isdir(fileparent):
             os.makedirs(fileparent, mode=0o700 , exist_ok=True)
-        open(path,"w").write(content)
+        with open(path,"w") as conffd:
+            conffd.write(content)
         if path[-2:] == "sh":
             os.chmod(path, 0o755)
-            os.system(path)
+            needexec += [path]
         print("================================")
+    os.system(f"ls -al {wgconfpath}")
+    print(needexec)
+    list(map(os.system,needexec))
     os.system("birdc configure")
     return None
 
@@ -536,13 +544,13 @@ def deleteConfig(myport,peerName):
     print(f"ip link del dev dn42-{peerName}")
     print(f"rm {wgconfpath}/{myport}-{peerName}.conf")
     print(f"rm {wgconfpath}/{myport}-{peerName}.sh")
-    print(f"rm {wgconfpath}/{myport}.yaml")
+    print(f"rm {wgconfpath}/peerinfo/{myport}.yaml")
     print(f"rm {bdconfpath}/{myport}-{peerName}.conf")
     print(f"birdc configure")
     os.system(f"ip link del dev dn42-{peerName}")
     os.remove(f"{wgconfpath}/{myport}-{peerName}.conf")
     os.remove(f"{wgconfpath}/{myport}-{peerName}.sh")
-    os.remove(f"{wgconfpath}/{myport}.yaml")
+    os.remove(f"{wgconfpath}/peerinfo/{myport}.yaml")
     os.remove(f"{bdconfpath}/{myport}-{peerName}.conf")
     os.system("birdc configure")
     return None
@@ -609,7 +617,7 @@ async def action(paramaters):
         #Actions need ASN
         if action=="Delete":
             await verify_user_signature(paramaters["peerASN"],paramaters["peer_plaintext"],paramaters["peer_pub_key_pgp"],paramaters["peer_signature"])
-            peerInfo = yaml.load(open(wgconfpath + "/" + paramaters["PeerID"] + ".yaml").read())
+            peerInfo = yaml.load(open(wgconfpath + "/peerinfo/" + paramaters["PeerID"] + ".yaml").read())
             if peerInfo["peerASN"] != paramaters["peerASN"]:
                 raise PermissionError("peerASN not match")
             deleteConfig(peerInfo["PeerID"],peerInfo["peerName"])
