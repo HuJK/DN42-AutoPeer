@@ -469,9 +469,10 @@ def newConfig(paramaters):
     if peerIPV6 == None:
         peerIPV6 = peerIPV6LL
     paramaters["PeerID"] = myport
+    peerName = str(int(myport) % 10000).zfill(4) + peerName
+    peerName = peerName.replace("-","_")
     peerName = re.sub(r"[^A-Za-z0-9_]+", '', peerName)
     peerName = peerName[:10]
-    peerName = peerName.replace("-","_")
     wsconf = f"""[Interface]
 PrivateKey = {privkey}
 ListenPort = {myport}
