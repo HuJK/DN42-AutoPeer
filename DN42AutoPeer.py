@@ -534,10 +534,13 @@ def saveConfig(new_config):
             os.chmod(path, 0o755)
             needexec += [path]
         print("================================")
+    saved_cwd = os.getcwd()
+    os.chdir(wgconfpath)
     os.system(f"ls -al {wgconfpath}")
     print(needexec)
     list(map(os.system,needexec))
     os.system("birdc configure")
+    os.chdir(saved_cwd)
     return None
 
 def deleteConfig(myport,peerName):
