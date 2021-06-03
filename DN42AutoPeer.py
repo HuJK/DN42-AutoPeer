@@ -115,7 +115,7 @@ input[type="text"] {{
 """
     if len(methods_class["Supported"]) == 0:
         retstr += f"""<h3>Sorry, we couldn't find any available authentication method in <a href="{baseURL}/data/mntner/{peerMNT}" target="_blank">your DN42 profile</a>.</h3>"""
-        retstr += f"<p>Please contact my to peer manually.</p>"
+        retstr += f"<p>Please contact me to peer manually.</p>"
     else:
         retstr += f"""<h3>Sign our message with your private key registered in <a href="{baseURL}/data/mntner/{peerMNT}" target="_blank">your DN42 profile</a> to get your signature</h3>"""
     if len(methods_class["Supported"]) + len(methods_class["Unsupported"]) == 0:
