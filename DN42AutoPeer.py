@@ -472,6 +472,8 @@ def newConfig(paramaters):
         raise IndexError("PeerID already exists.")
     if peerIPV6 == None:
         peerIPV6 = peerIPV6LL
+    if peerIPV6LL == None:
+        peerIPV6LL = peerIPV6
     paramaters["PeerID"] = myport
     peerName = str(int(myport) % 10000).zfill(4) + peerName
     peerName = peerName.replace("-","_")
