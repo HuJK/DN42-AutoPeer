@@ -122,13 +122,13 @@ async def get_signature_html(baseURL,paramaters):
 <h2>DN42 Self-Service Peering Portal</h2>
 """
     if len(methods_class["Supported"]) == 0:
-        retstr += f"""<h3>Sorry, we couldn't find any available authentication method in <a href="{baseURL}/data/mntner/{peerMNT}" target="_blank">your DN42 profile</a>.</h3>"""
+        retstr += f"""<h3>Sorry, we couldn't find any available authentication method in your <a href="{baseURL}/data/mntner/{peerMNT}" target="_blank">mntner</a> object or <a href="{baseURL}/data/person/{peerADM}" target="_blank"> admin contact</a> in the DN42 registry.</h3>"""
         retstr += f"<p>Please contact me to peer manually.</p>"
     else:
-        retstr += f"""<h3>Sign our message with your private key registered in <a href="{baseURL}/data/mntner/{peerMNT}" target="_blank">your DN42 profile</a> to get your signature</h3>"""
+        retstr += f"""<h3>Sign our message with your private key registered in your <a href="{baseURL}/data/mntner/{peerMNT}" target="_blank">mntner object</a> or <a href="{baseURL}/data/person/{peerADM}" target="_blank"> admin contact</a> in the DN42 registry.</h3>"""
     if len(methods_class["Supported"]) + len(methods_class["Unsupported"]) == 0:
-        retstr += f"""<h3>There are no any "auth" section in yout profile</h3>"""
-    retstr += "<h3>Supported auth method: </h3>" if len(list(methods_class["Supported"].keys())) != 0 else ""
+        retstr += f"""<h3>There are no any "auth" section in your <a href="{baseURL}/data/mntner/{peerMNT}" target="_blank">mntner object</a> or <a href="{baseURL}/data/person/{peerADM}" target="_blank"> admin contact</a> in the DN42 registry.</h3>"""
+    retstr += "<h3><font color='red'><b>Supported</b></font> auth method: </h3>" if len(list(methods_class["Supported"].keys())) != 0 else ""
     for m,v in methods_class["Supported"].items():
         retstr += f"""<table class="table"><tr><td><b>Allowed {m}(s): </b></td></tr>"""
         for v_item in v:
@@ -217,8 +217,7 @@ def get_html(paramaters,peerSuccess=False):
 <form action="/action_page.php" method="post" class="markdown-body">
  <h2>Authentication</h2>
  <table class="table">
-   <tr><td>Your ASN</td><td><input type="text" value="{peerASN if peerASN != None else ""}" name="peerASN" style="width:50%" /></td></tr>
-   <tr><td></td><td><input type="submit" name="action" value="Get Signature" /></td></tr>
+   <tr><td>Your ASN</td><td><input type="text" value="{peerASN if peerASN != None else ""}" name="peerASN" style="width:50%" /><input type="submit" name="action" value="Get Signature" /></td></tr>
    <tr><td>Plain text to sign</td><td><input type="text" value="{peer_plaintext}" name="peer_plaintext" readonly/></td></tr>
    <tr><td>Your PGP public key<br>(leave it blank if you don't use it)</td><td><textarea name="peer_pub_key_pgp">{peer_pub_key_pgp}</textarea></td></tr>
    <tr><td>Your signature</td><td><textarea name="peer_signature">{peer_signature}</textarea></td></tr>
@@ -228,7 +227,7 @@ def get_html(paramaters,peerSuccess=False):
    <tr><td><input type="checkbox" name="hasIPV4" {"checked" if hasIPV4 else ""}>DN42 IPv4</td><td><input type="text" value="{peerIPV4 if peerIPV4 != None else ""}" name="peerIPV4" /></td></tr>
    <tr><td><input type="checkbox" name="hasIPV6" {"checked" if hasIPV6 else ""}>DN42 IPv6</td><td><input type="text" value="{peerIPV6 if peerIPV6 != None else ""}" name="peerIPV6" /></td></tr>
    <tr><td><input type="checkbox" name="hasIPV6LL" {"checked" if hasIPV6LL else ""}>IPv6 Link local</td><td><input type="text" value="{peerIPV6LL if peerIPV6LL != None else ""}" name="peerIPV6LL" /></td></tr>
-   <tr><td><input type="checkbox" name="MP_BGP" {"checked" if MP_BGP else ""}>MP-BGP</td><td></td></tr>
+   <tr><td><input type="checkbox" name="MP_BGP" {"checked" if MP_BGP else ""}>Multiprotocol BGP</td><td></td></tr>
    <tr><td>Connectrion Info: </td><td>  </td></tr>
    <tr><td><input type="checkbox" name="hasHost" {"checked" if hasHost else ""}>Your Clearnet Host</td><td><input type="text" value="{peerHost if peerHost != None else ""}" name="peerHost" /></td></tr>
    <tr><td>Your WG Public Key</td><td><input type="text" value="{peerWG_Pub_Key}" name="peerWG_Pub_Key" /></td></tr>
@@ -526,6 +525,9 @@ async def check_reg_paramater(paramaters):
         check_valid_ip_range(IPv6Network,valid_ipv6_lilos,paramaters["peerIPV6LL"],"link-local ipv6")
     else:
         paramaters["peerIPV6LL"] = None
+    if paramaters["MP_BGP"]:
+        if not (paramaters["hasIPV4"] and (paramaters["hasIPV6"] or paramaters["hasIPV6LL"])):
+            raise ValueError("Value Error. You need both IPv4 and IPv6 to use multiprotocol BGP .")
     if paramaters["hasHost"]:
         if ":" not in paramaters["peerHost"]:
             raise ValueError("Parse Error, Host must looks like address:port .")
@@ -556,6 +558,12 @@ def newConfig(paramaters):
     
     if peerKey == None or len(peerKey) == 0:
         raise ValueError('"Your WG Public Key" can\'t be null.')
+    if os.path.isdir(f"{wgconfpath}/peerinfo"): #Check this node hasn't peer with us before
+        for old_conf_file in os.listdir(f"{wgconfpath}/peerinfo"):
+            if old_conf_file.endswith(".yaml") and os.path.isfile(f"{wgconfpath}/peerinfo/{old_conf_file}"):
+                old_conf = yaml.load(open(wgconfpath + "/peerinfo/" + old_conf_file).read(),Loader=yaml.SafeLoader)
+                if old_conf["peerWG_Pub_Key"] == peerKey:
+                    raise FileExistsError(f'This wireguard public key already exisis in "{old_conf_file}", please remove the peering first.')
     if peerName == None or len(peerName) == 0:
         raise ValueError('"Your Telegram ID or e-mail" can\'t be null.')
     
@@ -722,7 +730,7 @@ async def action(paramaters):
                 paramaters["hasIPV4"] = True 
                 paramaters["hasIPV6"] = True 
                 paramaters["hasIPV6LL"] = True
-                paramaters["MP_BGP"] = True
+                paramaters["MP_BGP"] = False
                 paramaters["hasHost"] = True
             return get_html(paramaters,peerSuccess=False)
         if action == "Check My Info":
@@ -743,7 +751,7 @@ async def action(paramaters):
             await verify_user_signature(paramaters["peerASN"],paramaters["peer_plaintext"],paramaters["peer_pub_key_pgp"],paramaters["peer_signature"])
             peerInfo = yaml.load(open(wgconfpath + "/peerinfo/" + paramaters["PeerID"] + ".yaml").read(),Loader=yaml.SafeLoader)
             if peerInfo["peerASN"] != paramaters["peerASN"]:
-                raise PermissionError("peerASN not match")
+                raise PermissionError("Peer ASN not match")
             deleteConfig(peerInfo["PeerID"],peerInfo["peerName"])
             paramaters["PeerID"] = None
             return get_err_page(paramaters,"Success! ","Profile deleted:<br><br>" + yaml.dump(peerInfo,sort_keys=False).replace("\n","<br>"))
@@ -771,6 +779,7 @@ async def action(paramaters):
             return get_err_page(paramaters,"Peer Success! My info:",yaml.dump(myInfo, sort_keys=False))
         return get_err_page(paramaters,"Error",ValueError("Unknow action" + str(action)))
     except Exception as e:
+        return get_err_page(paramaters,"Error",e)
         return get_err_page(paramaters,"Error",traceback.format_exc())
     
     
