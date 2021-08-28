@@ -7,7 +7,7 @@
     "wgconfpath": "/root/dn42",
     "bdconfpath": "/etc/bird/peers",
     "dn42_whois_server": "lantian.pub:43",
-    "dn42repo_base": "https://raw.githubusercontent.com/KusakabeSi/dv42-registry/main",
+    "dn42repo_base": "https://raw.githubusercontent.com/KusakabeSi/dv42-registry/master",
     "admin_mnt": "",
     "DN42_valid_ipv4s": [
         "172.20.0.0/14",
