@@ -21,7 +21,7 @@
         "fe80::/10"
     ],
     "wg_port_search_range": [
-        "lambda peerASN:int(peerASN[-5:])",
-        "lambda peerASN:int(peerASN[-5:]) + 100"
+        "lambda peerASN:20000+int(peerASN[-4:])",
+        "lambda peerASN:20000+int(peerASN[-4:]) + 100"
     ]
 }
