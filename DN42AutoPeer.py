@@ -281,7 +281,13 @@ async def socket_query(addr,message):
     return data.decode("utf8")
 
 async def whois_query(addr,query):
-    result = await socket_query(addr,query + "\r\n")
+    result = ""
+    if addr.startswith("http"):
+        client = tornado.httpclient.AsyncHTTPClient()
+        response = await client.fetch(addr + "/" + query)
+        result = response.body.decode("utf8")
+    else:
+        result = await socket_query(addr,query + "\r\n")
     result_item = result.split("\n")[1:]
     result_item = list(filter(lambda l:not l.startswith("%") and ":" in l,result_item))
     if len(result_item) == 0:
