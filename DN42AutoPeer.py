@@ -167,12 +167,16 @@ def get_html(paramaters,peerSuccess=False):
     peer_signature = paramaters["peer_signature"]
     peerASN = paramaters["peerASN"]
     hasIPV4 = paramaters["hasIPV4"]
+    hasIPV4Disabled = ""
     peerIPV4 = paramaters["peerIPV4"]
     hasIPV6 = paramaters["hasIPV6"]
+    hasIPV6Disabled = ""
     peerIPV6 = paramaters["peerIPV6"]
     hasIPV6LL = paramaters["hasIPV6LL"]
+    hasIPV6LLDisabled = ""
     peerIPV6LL = paramaters["peerIPV6LL"]
     MP_BGP = paramaters["MP_BGP"]
+    MP_BGP_Disabled = ""
     hasHost = paramaters["hasHost"]
     peerHost = paramaters["peerHost"]
     peerWG_Pub_Key = paramaters["peerWG_Pub_Key"]
@@ -185,6 +189,23 @@ def get_html(paramaters,peerSuccess=False):
     myIPV6LL = paramaters["myIPV6LL"]
     myWG_Pub_Key = paramaters["myWG_Pub_Key"]
     myContact = paramaters["myContact"]
+    if myIPV4 == None:
+        myIPV4 = ""
+    if myIPV6 == None:
+        myIPV6 = ""
+    if myIPV6LL == None:
+        myIPV6LL = ""
+    if myIPV4 == "":
+        hasIPV4 = False
+        hasIPV4Disabled = "disabled"
+    if myIPV6 == "":
+        hasIPV6 = False
+        hasIPV6Disabled = "disabled"
+    if myIPV6LL == "":
+        hasIPV6LL = False
+        hasIPV6LLDisabled = "disabled"
+    if not (myIPV4!="") and (myIPV6!="" or myIPV6LL!=""):
+        MP_BGP_Disabled = "disabled"
     return f"""
 <!DOCTYPE html>
 <html>
@@ -224,10 +245,10 @@ def get_html(paramaters,peerSuccess=False):
  </table>
  <h2>Registration</h2>
  <table class="table">
-   <tr><td><input type="checkbox" name="hasIPV4" {"checked" if hasIPV4 else ""}>DN42 IPv4</td><td><input type="text" value="{peerIPV4 if peerIPV4 != None else ""}" name="peerIPV4" /></td></tr>
-   <tr><td><input type="checkbox" name="hasIPV6" {"checked" if hasIPV6 else ""}>DN42 IPv6</td><td><input type="text" value="{peerIPV6 if peerIPV6 != None else ""}" name="peerIPV6" /></td></tr>
-   <tr><td><input type="checkbox" name="hasIPV6LL" {"checked" if hasIPV6LL else ""}>IPv6 Link local</td><td><input type="text" value="{peerIPV6LL if peerIPV6LL != None else ""}" name="peerIPV6LL" /></td></tr>
-   <tr><td><input type="checkbox" name="MP_BGP" {"checked" if MP_BGP else ""}>Multiprotocol BGP</td><td></td></tr>
+   <tr><td><input type="checkbox" name="hasIPV4" {"checked" if hasIPV4 else ""} {hasIPV4Disabled}>DN42 IPv4</td><td><input type="text" value="{peerIPV4 if peerIPV4 != None else ""}" name="peerIPV4" {hasIPV4Disabled} /></td></tr>
+   <tr><td><input type="checkbox" name="hasIPV6" {"checked" if hasIPV6 else ""} {hasIPV6Disabled}>DN42 IPv6</td><td><input type="text" value="{peerIPV6 if peerIPV6 != None else ""}" name="peerIPV6" {hasIPV6Disabled} /></td></tr>
+   <tr><td><input type="checkbox" name="hasIPV6LL" {"checked" if hasIPV6LL else ""} {hasIPV6LLDisabled}>IPv6 Link local</td><td><input type="text" value="{peerIPV6LL if peerIPV6LL != None else ""}" name="peerIPV6LL" {hasIPV6LLDisabled} /></td></tr>
+   <tr><td><input type="checkbox" name="MP_BGP" {"checked" if MP_BGP else ""} {MP_BGP_Disabled} >Multiprotocol BGP</td><td></td></tr>
    <tr><td>Connectrion Info: </td><td>  </td></tr>
    <tr><td><input type="checkbox" name="hasHost" {"checked" if hasHost else ""}>Your Clearnet Host</td><td><input type="text" value="{peerHost if peerHost != None else ""}" name="peerHost" /></td></tr>
    <tr><td>Your WG Public Key</td><td><input type="text" value="{peerWG_Pub_Key}" name="peerWG_Pub_Key" /></td></tr>
@@ -516,6 +537,8 @@ async def check_reg_paramater(paramaters):
     if paramaters["hasIPV4"]:
         check_valid_ip_range(IPv4Network,DN42_valid_ipv4s,paramaters["peerIPV4"],"DN42 ip")
         peerIPV4_info = proc_data((await whois_query(dn42_whois_server,paramaters["peerIPV4"])))
+        if paramaters["myIPV4"] == None or paramaters["myIPV4"] == "":
+            raise NotImplementedError("Sorry, I don't have IPv4 address.")
         if peerIPV4_info["admin-c"][0] != admin:
             raise PermissionError("IP " + paramaters["peerIPV4"] + " owned by " + peerIPV4_info["admin-c"][0] + " instead of " + admin)
     else:
@@ -523,12 +546,16 @@ async def check_reg_paramater(paramaters):
     if paramaters["hasIPV6"]:
         check_valid_ip_range(IPv6Network,DN42_valid_ipv6s,paramaters["peerIPV6"],"DN42 ipv6")
         peerIPV6_info = proc_data((await whois_query(dn42_whois_server,paramaters["peerIPV6"])))
+        if paramaters["myIPV6"] == None or paramaters["myIPV6"] == "":
+            raise NotImplementedError("Sorry, I don't have IPv6 address.")
         if peerIPV6_info["admin-c"][0] != admin:
             raise PermissionError("IP " + paramaters["peerIPV6"] + " owned by " + peerIPV6_info["admin-c"][0] + " instead of " + admin)
     else:
         paramaters["peerIPV6"] = None
     if paramaters["hasIPV6LL"]:
         check_valid_ip_range(IPv6Network,valid_ipv6_lilos,paramaters["peerIPV6LL"],"link-local ipv6")
+        if paramaters["myIPV6LL"] == None or paramaters["myIPV6LL"] == "":
+            raise NotImplementedError("Sorry, I don't have IPv6 link-local address.")
     else:
         paramaters["peerIPV6LL"] = None
     if paramaters["MP_BGP"]:
@@ -542,6 +569,20 @@ async def check_reg_paramater(paramaters):
         addrinfo = socket.getaddrinfo(hostaddr,port)
     else:
         paramaters["peerHost"] = None
+    
+    peerKey = paramaters["peerWG_Pub_Key"]
+    if peerKey == None or len(peerKey) == 0:
+        raise ValueError('"Your WG Public Key" can\'t be null.')
+    if os.path.isdir(f"{wgconfpath}/peerinfo"): #Check this node hasn't peer with us before
+        for old_conf_file in os.listdir(f"{wgconfpath}/peerinfo"):
+            if old_conf_file.endswith(".yaml") and os.path.isfile(f"{wgconfpath}/peerinfo/{old_conf_file}"):
+                old_conf = yaml.load(open(wgconfpath + "/peerinfo/" + old_conf_file).read(),Loader=yaml.SafeLoader)
+                if paramaters["peerIPV4"] != None and old_conf["peerIPV4"] == paramaters["peerIPV4"]:
+                    raise FileExistsError(f'This IPv4 address {paramaters["peerIPV4"]} already exisis in "{old_conf_file}", please remove the peering first.')
+                if paramaters["peerIPV6"] != None and old_conf["peerIPV6"] == paramaters["peerIPV6"]:
+                    raise FileExistsError(f'This IPv6 address {paramaters["peerIPV6"]} already exisis in "{old_conf_file}", please remove the peering first.')
+                if old_conf["peerWG_Pub_Key"] == peerKey:
+                    raise FileExistsError(f'This wireguard public key already exisis in "{old_conf_file}", please remove the peering first.')
     return paramaters
 
 def newConfig(paramaters):
@@ -562,14 +603,6 @@ def newConfig(paramaters):
     privkey = my_config["myWG_Pri_Key"]
     publkey = paramaters["myWG_Pub_Key"]
     
-    if peerKey == None or len(peerKey) == 0:
-        raise ValueError('"Your WG Public Key" can\'t be null.')
-    if os.path.isdir(f"{wgconfpath}/peerinfo"): #Check this node hasn't peer with us before
-        for old_conf_file in os.listdir(f"{wgconfpath}/peerinfo"):
-            if old_conf_file.endswith(".yaml") and os.path.isfile(f"{wgconfpath}/peerinfo/{old_conf_file}"):
-                old_conf = yaml.load(open(wgconfpath + "/peerinfo/" + old_conf_file).read(),Loader=yaml.SafeLoader)
-                if old_conf["peerWG_Pub_Key"] == peerKey:
-                    raise FileExistsError(f'This wireguard public key already exisis in "{old_conf_file}", please remove the peering first.')
     if peerName == None or len(peerName) == 0:
         raise ValueError('"Your Telegram ID or e-mail" can\'t be null.')
     
