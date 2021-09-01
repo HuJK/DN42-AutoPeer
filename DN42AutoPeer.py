@@ -134,7 +134,7 @@ async def get_signature_html(baseURL,paramaters):
         for v_item in v:
             retstr += f"""<tr><td>{v_item}</td></tr>"""
         retstr += "</table>"
-        retstr += method_hint[m].format(text2sign = text2sign.decode("utf8"))
+        retstr += method_hint[m].format(text2sign = text2sign)
     retstr += "<h4>Unupported auth method: </h4>" if len(list(methods_class["Unsupported"].keys())) != 0 else ""
     for m,v in methods_class["Unsupported"].items():
         retstr += f"""<table class="table"><tr><td><b>{m}</b></td></tr>"""
@@ -145,7 +145,7 @@ async def get_signature_html(baseURL,paramaters):
 <br>
 <form action="/action_page.php" method="post">\n"""
     paramaters = { valid_key: paramaters[valid_key] for valid_key in client_valid_keys }
-    paramaters["peer_plaintext"] = text2sign.decode("utf8")
+    paramaters["peer_plaintext"] = text2sign
     for k,v in paramaters.items():
         if v == None:
             v = ""
@@ -438,7 +438,7 @@ def verify_signature(plaintext,pub_key,pub_key_pgp,raw_signature,method):
 async def verify_user_signature(peerASN,plaintext,pub_key_pgp,raw_signature):
     try:
         raw_signature = raw_signature.replace("\r\n","\n")
-        sig_info = jwt.decode(plaintext.encode("utf8"),jwt_secret)
+        sig_info = jwt.decode(plaintext.encode("utf8"),jwt_secret,algorithms=["HS256"])
         if sig_info["ASN"] != peerASN:
             raise ValueError("JWT verification failed. You are not the mntner of " + sig_info["ASN"])
         supported_method= ["ssh-rsa"]
@@ -620,10 +620,6 @@ def newConfig(paramaters):
         raise IndexError("PeerID not available, contact my to peer manually. ")
     if myport in portlist:
         raise IndexError("PeerID already exists.")
-    if peerIPV6 == None:
-        peerIPV6 = peerIPV6LL
-    if peerIPV6LL == None:
-        peerIPV6LL = peerIPV6
     paramaters["PeerID"] = myport
     peerName = str(int(myport) % 10000).zfill(4) + peerName
     peerName = peerName.replace("-","_")
@@ -640,17 +636,23 @@ AllowedIPs = 0.0.0.0/0,::/0"""
 ip link add dev dn42-{peerName} type wireguard
 wg setconf dn42-{peerName} {myport}-{peerName}.conf
 ip link set dn42-{peerName} up
-ip addr add {myIPV6LL}/64 dev dn42-{peerName}
 """
-    wssh += f"""ip addr add {myIPV4} peer {peerIPV4} dev dn42-{peerName}
-""" if peerIPV4 != None else ""
-    wssh += f"""ip addr add {myIPV6} peer {peerIPV6} dev dn42-{peerName}
-ip route add {peerIPV6}/128 src {myIPV6} dev dn42-{peerName}""" if peerIPV6 != None else ""
+    if myIPV6LL != "" and myIPV6LL != None:
+        wssh += f"ip addr add {myIPV6LL}/64 dev dn42-{peerName}\n"
+    if peerIPV4 != None:
+        wssh += f"ip addr add {myIPV4} peer {peerIPV4} dev dn42-{peerName}\n"
+    if peerIPV6 != None:
+        wssh += f"ip addr add {myIPV6} peer {peerIPV6} dev dn42-{peerName}\n"
+        wssh += f"ip route add {peerIPV6}/128 src {myIPV6} dev dn42-{peerName}\n"
     
     birdconf = ""
+    birdPeerV4 = peerIPV4
+    birdPeerV6 = peerIPV6
+    if peerIPV6LL != None:
+        birdPeerV6 = peerIPV6LL
     if peerIPV4 != None and MP_BGP == False:
         birdconf += f"""protocol bgp dn42_{peerName}_v4 from dnpeers {{
-    neighbor {peerIPV4} as {peerASN};
+    neighbor {birdPeerV4} as {peerASN};
     direct;
     ipv6 {{
         import none;
@@ -658,9 +660,9 @@ ip route add {peerIPV6}/128 src {myIPV6} dev dn42-{peerName}""" if peerIPV6 != N
     }};
 }};
 """
-    if peerIPV6 != None:
+    if peerIPV6 != None or peerIPV6LL != None:
         birdconf += f"""protocol bgp dn42_{peerName}_v6 from dnpeers {{
-    neighbor {peerIPV6LL} % 'dn42-{peerName}' as {peerASN};
+    neighbor {birdPeerV6} % 'dn42-{peerName}' as {peerASN};
     direct;"""
         if MP_BGP == False:
             birdconf += """
