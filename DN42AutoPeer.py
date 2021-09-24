@@ -6,6 +6,7 @@ import time
 import pgpy
 import yaml
 import json
+import errno
 import pathlib
 import asyncio
 import random
@@ -730,11 +731,12 @@ async def action(paramaters):
     try:
         try:
             if paramaters["PeerID"] != None:
-                if int(paramaters["PeerID"]) <= 1024 or int(paramaters["PeerID"]) > 65535:
+                if int(paramaters["PeerID"]) < 0 or int(paramaters["PeerID"]) > 65535:
                     raise ValueError("Invalid PeerID")
         except Exception as e:
+            filename = paramaters["PeerID"] + ".yaml"
             paramaters["PeerID"] = None
-            raise e
+            raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), filename)
         if action=="OK":
             if paramaters["peerASN"] == None:
                 paramaters["hasIPV4"] = True 
@@ -742,12 +744,18 @@ async def action(paramaters):
                 paramaters["hasIPV6LL"] = True
                 paramaters["MP_BGP"] = False
                 paramaters["hasHost"] = True
-            return get_html(paramaters,peerSuccess=False)
+            return 200, get_html(paramaters,peerSuccess=False)
         if action == "Check My Info":
-            peerInfo = yaml.load(open(wgconfpath + "/peerinfo/" + paramaters["PeerID"] + ".yaml").read(),Loader=yaml.SafeLoader)
+            if paramaters["PeerID"] == None:
+                raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), "")
+            try:
+                peerInfo = yaml.load(open(wgconfpath + "/peerinfo/" + paramaters["PeerID"] + ".yaml").read(),Loader=yaml.SafeLoader)
+            except FileNotFoundError as e:
+                e.filename = paramaters["PeerID"] + ".yaml"
+                raise e
             peerInfo = { valid_key: peerInfo[valid_key] for valid_key in client_valid_keys if valid_key in peerInfo }
             paramaters = {**paramaters,**peerInfo, **my_paramaters}
-            return get_html(paramaters,peerSuccess=True)
+            return 200, get_html(paramaters,peerSuccess=True)
         # Check ASN is valid for following action
         if paramaters["peerASN"] == None:
             raise ValueError("peerASN can't be null.")
@@ -759,14 +767,18 @@ async def action(paramaters):
         #Actions need ASN
         if action=="Delete":
             await verify_user_signature(paramaters["peerASN"],paramaters["peer_plaintext"],paramaters["peer_pub_key_pgp"],paramaters["peer_signature"])
-            peerInfo = yaml.load(open(wgconfpath + "/peerinfo/" + paramaters["PeerID"] + ".yaml").read(),Loader=yaml.SafeLoader)
+            try:
+                peerInfo = yaml.load(open(wgconfpath + "/peerinfo/" + paramaters["PeerID"] + ".yaml").read(),Loader=yaml.SafeLoader)
+            except FileNotFoundError as e:
+                e.filename = paramaters["PeerID"] + ".yaml"
+            raise e
             if peerInfo["peerASN"] != paramaters["peerASN"]:
                 raise PermissionError("Peer ASN not match")
             deleteConfig(peerInfo["PeerID"],peerInfo["peerName"])
             paramaters["PeerID"] = None
-            return get_err_page(paramaters,"Profile deleted:" ,yaml.dump(peerInfo,sort_keys=False).replace("\n","<br>"),big_title="Success!")
+            return 200, get_err_page(paramaters,"Profile deleted:" ,yaml.dump(peerInfo,sort_keys=False).replace("\n","<br>"),big_title="Success!")
         elif action=="Get Signature":
-            return await get_signature_html(dn42repo_base,paramaters)
+            return 200, await get_signature_html(dn42repo_base,paramaters)
         elif action == "Register":
             mntner = await verify_user_signature(paramaters["peerASN"],paramaters["peer_plaintext"],paramaters["peer_pub_key_pgp"],paramaters["peer_signature"])
             if mntner != my_config["admin_mnt"]:
@@ -786,14 +798,17 @@ async def action(paramaters):
                 "My WG Public Key":paramaters["myWG_Pub_Key"],
                 "My Telegram ID":  paramaters["myContact"]
             }
-            return get_err_page(paramaters, f'Your PeerID is: { paramaters["PeerID"] }<br>My info:',yaml.dump(myInfo, sort_keys=False),big_title="Peer Success!")
+            return 200, get_err_page(paramaters, f'Your PeerID is: { paramaters["PeerID"] }<br>My info:',yaml.dump(myInfo, sort_keys=False),big_title="Peer Success!")
         return get_err_page(paramaters,"400 - Bad Request",ValueError("Unknow action" + str(action)))
     except Exception as e:
         title = type(e).__name__
+        errcode = 400
         if type(e) == FileNotFoundError:
             title = "404 - File or directory not found."
-        return get_err_page(paramaters,title,e)
-        #return get_err_page(paramaters,title,traceback.format_exc())
+            errorcode = 404
+            e = "The resource you are looking for might have been removed, had its name changed, or is temporarily unavailable.\n    " + str(e.filename)
+        #return errcode, get_err_page(paramaters,title,traceback.format_exc())
+        return errcode, get_err_page(paramaters,title,e)
 
 ipv4s = [ipaddress.ip_network(n) for n in requests.get("https://www.cloudflare.com/ips-v4").text.split("\n")]
 ipv6s = [ipaddress.ip_network(n) for n in requests.get("https://www.cloudflare.com/ips-v6").text.split("\n")]
@@ -810,8 +825,6 @@ def get_ip(r):
     return r.remote_ip
 
 
-
-
 class actionHandler(tornado.web.RequestHandler):
     def __init__(self, *args, **kwargs):
         super(actionHandler, self).__init__(*args, **kwargs)
@@ -822,12 +835,14 @@ class actionHandler(tornado.web.RequestHandler):
     async def get(self, *args, **kwargs): 
         paramaters = { k: self.get_argument(k) for k in self.request.arguments }
         print("GET " + self.request.uri + f' ({get_ip(self.request)}) ' , paramaters)
-        ret = await action(paramaters)
+        code, ret = await action(paramaters)
+        self.set_status(code)
         self.write(ret)
     async def post(self, *args, **kwargs): 
         paramaters = { k: self.get_argument(k) for k in self.request.arguments }
         print("POST " + self.request.uri + f' ({get_ip(self.request)}) ' , paramaters)
-        ret = await action(paramaters)
+        code, ret = await action(paramaters)
+        self.set_status(code)
         self.write(ret)
 
 nfpage = """

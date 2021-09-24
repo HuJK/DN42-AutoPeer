@@ -1,6 +1,7 @@
 import re
 import os
 import time
+import errno
 import asyncio
 import tornado
 from git import Repo
@@ -104,7 +105,7 @@ class tcp_whois():
         result_item = result.split("\n")
         result_item = list(filter(lambda l:not l.startswith("%") and ":" in l,result_item))
         if len(result_item) == 0:
-            raise FileNotFoundError(query)
+            raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), query)
         return "\n".join(result_item)
 
 class git_whois():
@@ -132,14 +133,14 @@ class git_whois():
             prefix,ip = body.split("/",1)
             length = int(length)
             if length > max_length:
-                raise FileNotFoundError(query)
+                raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), query)
             for i in range(length,-1,-1):
                 try:
                     try_net = ipaddress.ip_network(ip + "/" + str(i),strict=False)
                     return await self.file_query(prefix + "/" + str(try_net.network_address) + "_" + str(i))
                 except FileNotFoundError as e:
                     pass
-            raise FileNotFoundError(query)
+            raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), query)
         else:
             return await self.file_query(query)
     async def file_query(self,query):
@@ -151,7 +152,7 @@ class git_whois():
             result_item = list(filter(lambda l:not l.startswith("%") and ":" in l,result_item))
             return "\n".join(result_item)
         except FileNotFoundError:
-            raise FileNotFoundError(query)
+            raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), query)
 
             
 class http_whois():
@@ -170,7 +171,7 @@ class http_whois():
             prefix,ip = body.split("/",1)
             length = int(length)
             if length > max_length:
-                raise FileNotFoundError(query)
+                raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), query)
             http_quaries = [ asyncio.create_task(self.http_query(prefix + "/" + str(ipaddress.ip_network(ip + "/" + str(i),strict=False).network_address) + "_" + str(i))) for i in range(length,-1,-1)]
             result = ""
             for i in range(0,length+1):
@@ -181,7 +182,7 @@ class http_whois():
                     return result
                 except FileNotFoundError as e:
                     pass
-            raise FileNotFoundError(query)
+            raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), query)
         else:
             return await self.http_query(query)
     async def http_query(self,query):
@@ -194,5 +195,5 @@ class http_whois():
             return "\n".join(result_item)
         except HTTPClientError as e:
             if e.code == 404:
-                raise FileNotFoundError(query)
+                raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), query)
             raise e
