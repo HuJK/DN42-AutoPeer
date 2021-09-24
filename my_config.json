@@ -1,5 +1,6 @@
 {
     "jwt_secret": null,
+    "html_title": "DN42 Self-Service Peering Portal",
     "listen_host": "0.0.0.0",
     "listen_port": 4242,
     "ssl_options": null,
