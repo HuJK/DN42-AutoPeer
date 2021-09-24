@@ -185,6 +185,7 @@ def get_html(paramaters,peerSuccess=False):
     MP_BGP = paramaters["MP_BGP"]
     MP_BGP_Disabled = ""
     hasHost = paramaters["hasHost"]
+    hasHost_Readonly = ""
     peerHost = paramaters["peerHost"]
     peerWG_Pub_Key = paramaters["peerWG_Pub_Key"]
     peerContact = paramaters["peerContact"]
@@ -202,6 +203,8 @@ def get_html(paramaters,peerSuccess=False):
         myIPV6 = ""
     if myIPV6LL == None:
         myIPV6LL = ""
+    if myHost == None:
+        myHost = ""
     if myIPV4 == "":
         hasIPV4 = False
         hasIPV4Disabled = "disabled"
@@ -213,6 +216,9 @@ def get_html(paramaters,peerSuccess=False):
         hasIPV6LLDisabled = "disabled"
     if not (myIPV4!="") and (myIPV6!="" or myIPV6LL!=""):
         MP_BGP_Disabled = "disabled"
+    if myHost == "":
+        hasHost = True
+        hasHost_Readonly = 'onclick="return false;"'
     return f"""
 <!DOCTYPE html>
 <html>
@@ -257,7 +263,7 @@ def get_html(paramaters,peerSuccess=False):
    <tr><td><input type="checkbox" name="hasIPV6LL" {"checked" if hasIPV6LL else ""} {hasIPV6LLDisabled}>IPv6 Link local</td><td><input type="text" value="{peerIPV6LL if peerIPV6LL != None else ""}" name="peerIPV6LL" {hasIPV6LLDisabled} /></td></tr>
    <tr><td><input type="checkbox" name="MP_BGP" {"checked" if MP_BGP else ""} {MP_BGP_Disabled} >Multiprotocol BGP</td><td></td></tr>
    <tr><td>Connectrion Info: </td><td>  </td></tr>
-   <tr><td><input type="checkbox" name="hasHost" {"checked" if hasHost else ""}>Your Clearnet Host</td><td><input type="text" value="{peerHost if peerHost != None else ""}" name="peerHost" /></td></tr>
+   <tr><td><input type="checkbox" name="hasHost" {"checked" if hasHost else ""} {hasHost_Readonly}>Your Clearnet Host</td><td><input type="text" value="{peerHost if peerHost != None else ""}" name="peerHost" /></td></tr>
    <tr><td>Your WG Public Key</td><td><input type="text" value="{peerWG_Pub_Key}" name="peerWG_Pub_Key" /></td></tr>
    <tr><td>Your Telegram ID or e-mail</td><td><input type="text" value="{peerContact}" name="peerContact" /></td></tr>
    <tr><td><input type="submit" name="action" value="Register" /></td><td>Register a new peer to get Peer ID</td></tr>
@@ -407,6 +413,8 @@ def verify_signature(plaintext,pub_key,pub_key_pgp,raw_signature,method):
 
 async def verify_user_signature(peerASN,plaintext,pub_key_pgp,raw_signature):
     try:
+        if plaintext == "" or plaintext == None:
+            raise ValueError('Plain text to sign can\'t be null, please click the button "Get Signature" first.')
         raw_signature = raw_signature.replace("\r\n","\n")
         sig_info = jwt.decode(plaintext.encode("utf8"),jwt_secret,algorithms=["HS256"])
         if sig_info["ASN"] != peerASN:
@@ -532,7 +540,9 @@ async def check_reg_paramater(paramaters):
         if not (paramaters["hasIPV4"] and (paramaters["hasIPV6"] or paramaters["hasIPV6LL"])):
             raise ValueError("Value Error. You need both IPv4 and IPv6 to use multiprotocol BGP .")
     if paramaters["hasHost"]:
-        if ":" not in paramaters["peerHost"]:
+        if paramaters["peerHost"] == None and (my_paramaters["myHost"] == "" or my_paramaters["myHost"] == None):
+            raise ValueError("Sorry, I don't have a public IP so that your endpoint can't be null.")
+        if paramaters["peerHost"] == None or ":" not in paramaters["peerHost"]:
             raise ValueError("Parse Error, Host must looks like address:port .")
         hostaddr,port = paramaters["peerHost"].rsplit(":",1)
         port = int(port)
@@ -597,7 +607,7 @@ def newConfig(paramaters):
     peerName = peerName[:10]
     wsconf = f"""[Interface]
 PrivateKey = {privkey}
-ListenPort = {myport}
+ListenPort = {0 if (my_paramaters["myHost"] == "" or my_paramaters["myHost"] == None) else myport}
 [Peer]
 PublicKey = {peerKey} {chr(10) + "Endpoint = " + peerHost if peerHost != None else ""}
 AllowedIPs = 0.0.0.0/0,::/0"""
@@ -771,7 +781,7 @@ async def action(paramaters):
                 peerInfo = yaml.load(open(wgconfpath + "/peerinfo/" + paramaters["PeerID"] + ".yaml").read(),Loader=yaml.SafeLoader)
             except FileNotFoundError as e:
                 e.filename = paramaters["PeerID"] + ".yaml"
-            raise e
+                raise e
             if peerInfo["peerASN"] != paramaters["peerASN"]:
                 raise PermissionError("Peer ASN not match")
             deleteConfig(peerInfo["PeerID"],peerInfo["peerName"])
