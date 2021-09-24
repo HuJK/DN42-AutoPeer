@@ -16,6 +16,7 @@ import hashlib
 import OpenSSL
 import requests
 import datetime
+import ipaddress
 import traceback
 from subprocess import Popen, PIPE, STDOUT
 import tornado.web
@@ -27,7 +28,9 @@ from Crypto.PublicKey import RSA
 from ipaddress import IPv4Network
 from ipaddress import IPv6Network
 from tornado.httpclient import HTTPClientError
+import DN42whois 
 
+print("Starting...")
 my_paramaters = json.loads(open("my_parameters.json").read())
 my_config = json.loads(open("my_config.json").read())
 
@@ -39,11 +42,12 @@ jwt_secret = my_config["jwt_secret"]
 wgconfpath = my_config["wgconfpath"]
 bdconfpath = my_config["bdconfpath"]
 client_valid_keys = ["peer_plaintext","peer_pub_key_pgp","peer_signature", "peerASN", "hasIPV4", "peerIPV4", "hasIPV6", "peerIPV6", "hasIPV6LL", "peerIPV6LL","MP_BGP", "hasHost", "peerHost", "peerWG_Pub_Key", "peerContact", "PeerID"]
-dn42_whois_server = my_config["dn42_whois_server"]
 dn42repo_base = my_config["dn42repo_base"]
 DN42_valid_ipv4s = my_config["DN42_valid_ipv4s"]
 DN42_valid_ipv6s = my_config["DN42_valid_ipv6s"]
 valid_ipv6_lilos = my_config["valid_ipv6_linklocals"]
+whois = DN42whois.whois(*my_config["dn42_whois_server"])
+whois_query = whois.query
 
 method_hint = {"ssh-rsa":"""<h4>Paste following command to your terminal to get your signature.</h4>
 <code>
@@ -78,6 +82,10 @@ echo -n "{text2sign}" | gpg --clearsign --detach-sign<br>
 async def get_signature_html(baseURL,paramaters):
     peerASN = paramaters["peerASN"]
     peerMNT, peerADM = await get_info_from_asn(peerASN)
+    try:
+        peerADMname = (await get_person_info(peerADM))["person"][0]
+    except Exception as e:
+        peerADMname = ""
     methods = await get_auth_method(peerMNT, peerADM)
     text2sign = jwt.encode({'ASN': peerASN, "exp":datetime.datetime.utcnow() + datetime.timedelta(minutes = 5) }, jwt_secret, algorithm='HS256')
     methods_class = {"Supported":{},"Unsupported":{}}
@@ -120,14 +128,12 @@ async def get_signature_html(baseURL,paramaters):
     </head>
 <body>
 <h2>{ my_config["html_title"] }</h2>
+<h3>Dear { peerADMname }:</h3>
 """
     if len(methods_class["Supported"]) == 0:
-        retstr += f"""<h3>Sorry, we couldn't find any available authentication method in your <a href="{baseURL}/data/mntner/{peerMNT}" target="_blank">mntner</a> object or <a href="{baseURL}/data/person/{peerADM}" target="_blank"> admin contact</a> in the DN42 registry.</h3>"""
-        retstr += f"<p>Please contact me to peer manually.</p>"
+        retstr += f"""<h4>&nbsp;&nbsp;&nbsp;&nbsp;Sorry, we couldn't find any available authentication method in your <a href="{baseURL}/data/mntner/{peerMNT}" target="_blank">mntner</a> object or <a href="{baseURL}/data/person/{peerADM}" target="_blank"> admin contact</a> in the DN42 registry.</h4><h4>Please contact me to peer manually.</h4>"""
     else:
-        retstr += f"""<h3>Sign our message with your private key registered in your <a href="{baseURL}/data/mntner/{peerMNT}" target="_blank">mntner object</a> or <a href="{baseURL}/data/person/{peerADM}" target="_blank"> admin contact</a> in the DN42 registry.</h3>"""
-    if len(methods_class["Supported"]) + len(methods_class["Unsupported"]) == 0:
-        retstr += f"""<h3>There are no any "auth" section in your <a href="{baseURL}/data/mntner/{peerMNT}" target="_blank">mntner object</a> or <a href="{baseURL}/data/person/{peerADM}" target="_blank"> admin contact</a> in the DN42 registry.</h3>"""
+        retstr += f"""<h4>&nbsp;&nbsp;&nbsp;&nbsp;Please sign our message with your private key registered in your <a href="{baseURL}/data/mntner/{peerMNT}" target="_blank">mntner object</a> or <a href="{baseURL}/data/person/{peerADM}" target="_blank"> admin contact</a> in the DN42 registry.</h4>"""
     retstr += "<h3><font color='red'><b>Supported</b></font> auth method: </h3>" if len(list(methods_class["Supported"].keys())) != 0 else ""
     for m,v in methods_class["Supported"].items():
         retstr += f"""<table class="table"><tr><td><b>Allowed {m}(s): </b></td></tr>"""
@@ -278,58 +284,21 @@ def get_html(paramaters,peerSuccess=False):
 </html>
 """
 
-def proc_data(data_in):
-    ret_dict = {}
-    for data_in_item in data_in:
-        key , val = data_in_item.split(":",1)
-        val = val.lstrip()
-        if key in ret_dict:
-            ret_dict[key] += [val]
-        else:
-            ret_dict[key] = [val]
-    return ret_dict
-
-async def socket_query(addr,message):
-    host,port = addr.rsplit(":",1)
-    port = int(port)
-    reader, writer = await asyncio.open_connection(host, port)
-    writer.write(message.encode("utf8"))
-    await writer.drain()
-    writer.write_eof()
-    data = await reader.read()
-    writer.close()
-    await writer.wait_closed()
-    return data.decode("utf8")
-
-async def whois_query(addr,query):
-    result = ""
-    if addr.startswith("http"):
-        client = tornado.httpclient.AsyncHTTPClient()
-        response = await client.fetch(addr + "/" + query)
-        result = response.body.decode("utf8")
-    else:
-        result = await socket_query(addr,query + "\r\n")
-    result_item = result.split("\n")[1:]
-    result_item = list(filter(lambda l:not l.startswith("%") and ":" in l,result_item))
-    if len(result_item) == 0:
-        raise FileNotFoundError(query)
-    return result_item
-
 async def get_info_from_asn(asn):
-    asn_info = (await whois_query(dn42_whois_server, "aut-num/" + asn))
-    data = proc_data(asn_info)
+    asn_info = (await whois_query("aut-num/" + asn))
+    data = DN42whois.proc_data(asn_info)
     return data["mnt-by"][0] , data["admin-c"][0]
 
 async def get_mntner_info(mntner):
-    mntner_info = (await whois_query(dn42_whois_server, "mntner/" + mntner))
-    ret = proc_data(mntner_info)
+    mntner_info = (await whois_query("mntner/" + mntner))
+    ret = DN42whois.proc_data(mntner_info)
     if "auth" not in ret:
         ret["auth"] = []
     return ret
 
 async def get_person_info(person):
-    person_info = (await whois_query(dn42_whois_server, "person/" + person))
-    ret = proc_data(person_info)
+    person_info = (await whois_query("person/" + person))
+    ret = DN42whois.proc_data(person_info)
     if "auth" not in ret:
         ret["auth"] = []
     if "pgp-fingerprint" in ret:
@@ -358,7 +327,7 @@ async def try_get_pub_key(pgpsig):
         return ""
     pgpsig = pgpsig[-8:]
     try:
-        result = await whois_query(dn42_whois_server,"key-cert/PGPKEY-" + pgpsig)
+        result = await whois_query("key-cert/PGPKEY-" + pgpsig)
     except:
         return ""
     result = list(filter(lambda l:l.startswith("certif:"),result))
@@ -473,38 +442,35 @@ async def verify_user_signature(peerASN,plaintext,pub_key_pgp,raw_signature):
         customError.__name__ = "SignatureError: " + type(e).__name__
         raise customError(str(e))
 
-def get_err_page(paramaters,level,error):
-    retstr =  f"""<!DOCTYPE html>
-<html>
-    <head>
-        <title>{ my_config["html_title"] }</title>
-        <a href="https://github.com/HuJK/dn42-autopeer/" class="github-corner" aria-label="View source on GitHub"><svg width="80" height="80" viewBox="0 0 250 250" style="fill:#64CEAA; color:#fff; position: absolute; top: 0; border: 0; right: 0;" aria-hidden="true"><path d="M0,0 L115,115 L130,115 L142,142 L250,250 L250,0 Z"></path><path d="M128.3,109.0 C113.8,99.7 119.0,89.6 119.0,89.6 C122.0,82.7 120.5,78.6 120.5,78.6 C119.2,72.0 123.4,76.3 123.4,76.3 C127.3,80.9 125.5,87.3 125.5,87.3 C122.9,97.6 130.6,101.9 134.4,103.2" fill="currentColor" style="transform-origin: 130px 106px;" class="octo-arm"></path><path d="M115.0,115.0 C114.9,115.1 118.7,116.5 119.8,115.4 L133.7,101.6 C136.9,99.2 139.9,98.4 142.2,98.6 C133.8,88.0 127.5,74.4 143.8,58.0 C148.5,53.4 154.0,51.2 159.7,51.0 C160.3,49.4 163.2,43.6 171.4,40.1 C171.4,40.1 176.1,42.5 178.8,56.2 C183.1,58.6 187.2,61.8 190.9,65.4 C194.5,69.0 197.7,73.2 200.1,77.6 C213.8,80.2 216.3,84.9 216.3,84.9 C212.7,93.1 206.9,96.0 205.4,96.6 C205.1,102.4 203.0,107.8 198.3,112.5 C181.9,128.9 168.3,122.5 157.7,114.1 C157.9,116.9 156.7,120.9 152.7,124.9 L141.0,136.5 C139.8,137.7 141.6,141.9 141.8,141.8 Z" fill="currentColor" class="octo-body"></path></svg></a><style>.github-corner:hover .octo-arm{{animation:octocat-wave 560ms ease-in-out}}@keyframes octocat-wave{{0%,100%{{transform:rotate(0)}}20%,60%{{transform:rotate(-25deg)}}40%,80%{{transform:rotate(10deg)}}}}@media (max-width:500px){{.github-corner:hover .octo-arm{{animation:none}}.github-corner .octo-arm{{animation:octocat-wave 560ms ease-in-out}}}}</style>
-        <style type="text/css">
-            code {{display: block; /* fixes a strange ie margin bug */font-family: Courier New;font-size: 11pt;overflow:auto;background: #f0f0f0 url(data:image/gif;base64,iVBORw0KGgoAAAANSUhEUgAAAAsAAASwCAYAAAAt7rCDAAAABHNCSVQICAgIfAhkiAAAAQJJREFUeJzt0kEKhDAMBdA4zFmbM+W0upqFOhXrDILwsimFR5pfMrXW5jhZr7PwRlxVX8//jNHrGhExjXzdu9c5IiIz+7iqVmB7Hwp4OMa2nhhwN/PRGEMBh3Zjt6KfpzPztxW9MSAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzB8HS+J9kUTvzEDMwAAAABJRU5ErkJggg==) left top repeat-y;border: 10px solid white;padding: 10px 10px 10px 21px;max-height:1000px;line-height: 1.2em;}}
-            table {{
-              table-layout: fixed;
-              width: 100%;
-            }}
-            table td {{
-                word-wrap: break-word;         /* All browsers since IE 5.5+ */
-                overflow-wrap: break-word;     /* Renamed property in CSS3 draft spec */
-            }}
-            textarea {{
-              width: 100%;
-              height:87px;
-            }}
-            input[type="text"] {{
-              width: 100%;
-            }}
-        </style>
-        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@4.6.0/dist/css/bootstrap.min.css" integrity="sha384-B0vP5xmATw1+K9KRQjQERJvTumQW0nPEzvF6L/Z6nronJ3oUOFUFpCjEUQouq2+l" crossorigin="anonymous">
-    </head>
+def get_err_page(paramaters,title,error,big_title="Server Error"):
+    retstr =  f"""
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1"/>
+<title>404 - File or directory not found.</title>
+<style type="text/css">
+<!--
+body{{margin:0;font-size:.7em;font-family:Verdana, Arial, Helvetica, sans-serif;background:#EEEEEE;}}
+fieldset{{padding:0 15px 10px 15px;}}
+h1{{font-size:2.4em;margin:0;color:#FFF;}}
+h2{{font-size:1.7em;margin:0;color:#CC0000;}}
+h3{{font-size:1.2em;margin:10px 0 0 0;color:#000000;}}
+#header{{width:96%;margin:0 0 0 0;padding:6px 2% 6px 2%;font-family:"trebuchet MS", Verdana, sans-serif;color:#FFF;
+background-color:#555555;}}
+#content{{margin:0 0 0 2%;position:relative;}}
+.content-container{{background:#FFF;width:96%;margin-top:8px;padding:10px;position:relative;}}
+-->
+</style>
+</head>
 <body>
-<h2>{ my_config["html_title"] }</h2>
-<h3>{level}</h3>
-{"<h3>" + type(error).__name__ + ":</h3>" if type(error) != str else ""}
-<code><pre>{str(error)}</pre></code>
-<form action="/action_page.php" method="post">\n"""
+<div id="header"><h1>{big_title}</h1></div>
+<div id="content">
+ <div class="content-container"><fieldset>
+  <h2>{ title}</h2>
+  <h3>{str(error).replace(chr(10),"<br>").replace(" ","&nbsp;")}</h3>
+  <h3></h3>
+  <form action="/action_page.php" method="post">\n"""
     paramaters = { valid_key: paramaters[valid_key] for valid_key in client_valid_keys }
     for k,v in paramaters.items():
         if v == None:
@@ -513,9 +479,12 @@ def get_err_page(paramaters,level,error):
             v = "on"
         retstr += f'<input type="hidden" name="{k}" value="{v}">\n'
     retstr +="""<input type="submit" name="action" value="OK" />
-</form>
+  </form>
+ </fieldset></div>
+</div>
 </body>
-</html>"""
+</html>
+"""
     return retstr
 
 def check_valid_ip_range(IPclass,IPranges,ip,name):
@@ -536,7 +505,7 @@ async def check_reg_paramater(paramaters):
     mntner,admin = await get_info_from_asn(paramaters["peerASN"])
     if paramaters["hasIPV4"]:
         check_valid_ip_range(IPv4Network,DN42_valid_ipv4s,paramaters["peerIPV4"],"DN42 ip")
-        peerIPV4_info = proc_data((await whois_query(dn42_whois_server,paramaters["peerIPV4"])))
+        peerIPV4_info = DN42whois.proc_data((await whois_query(paramaters["peerIPV4"])))
         if paramaters["myIPV4"] == None or paramaters["myIPV4"] == "":
             raise NotImplementedError("Sorry, I don't have IPv4 address.")
         if peerIPV4_info["admin-c"][0] != admin:
@@ -545,7 +514,7 @@ async def check_reg_paramater(paramaters):
         paramaters["peerIPV4"] = None
     if paramaters["hasIPV6"]:
         check_valid_ip_range(IPv6Network,DN42_valid_ipv6s,paramaters["peerIPV6"],"DN42 ipv6")
-        peerIPV6_info = proc_data((await whois_query(dn42_whois_server,paramaters["peerIPV6"])))
+        peerIPV6_info = DN42whois.proc_data((await whois_query(paramaters["peerIPV6"])))
         if paramaters["myIPV6"] == None or paramaters["myIPV6"] == "":
             raise NotImplementedError("Sorry, I don't have IPv6 address.")
         if peerIPV6_info["admin-c"][0] != admin:
@@ -795,7 +764,7 @@ async def action(paramaters):
                 raise PermissionError("Peer ASN not match")
             deleteConfig(peerInfo["PeerID"],peerInfo["peerName"])
             paramaters["PeerID"] = None
-            return get_err_page(paramaters,"Success! ","Profile deleted:<br><br>" + yaml.dump(peerInfo,sort_keys=False).replace("\n","<br>"))
+            return get_err_page(paramaters,"Profile deleted:" ,yaml.dump(peerInfo,sort_keys=False).replace("\n","<br>"),big_title="Success!")
         elif action=="Get Signature":
             return await get_signature_html(dn42repo_base,paramaters)
         elif action == "Register":
@@ -817,13 +786,31 @@ async def action(paramaters):
                 "My WG Public Key":paramaters["myWG_Pub_Key"],
                 "My Telegram ID":  paramaters["myContact"]
             }
-            return get_err_page(paramaters,"Peer Success! My info:",yaml.dump(myInfo, sort_keys=False))
-        return get_err_page(paramaters,"Error",ValueError("Unknow action" + str(action)))
+            return get_err_page(paramaters, f'Your PeerID is: { paramaters["PeerID"] }<br>My info:',yaml.dump(myInfo, sort_keys=False),big_title="Peer Success!")
+        return get_err_page(paramaters,"400 - Bad Request",ValueError("Unknow action" + str(action)))
     except Exception as e:
-        return get_err_page(paramaters,"Error",e)
-        return get_err_page(paramaters,"Error",traceback.format_exc())
-    
-    
+        title = type(e).__name__
+        if type(e) == FileNotFoundError:
+            title = "404 - File or directory not found."
+        return get_err_page(paramaters,title,e)
+        #return get_err_page(paramaters,title,traceback.format_exc())
+
+ipv4s = [ipaddress.ip_network(n) for n in requests.get("https://www.cloudflare.com/ips-v4").text.split("\n")]
+ipv6s = [ipaddress.ip_network(n) for n in requests.get("https://www.cloudflare.com/ips-v6").text.split("\n")]
+
+def get_ip(r):
+    rip = ipaddress.ip_address( r.remote_ip )
+    if type(rip) == ipaddress.IPv4Address:
+        clist = ipv4s
+    else:
+        clist = ipv6s
+    for c in clist:
+        if rip in c:
+            return r.headers["CF-Connecting-IP"]
+    return r.remote_ip
+
+
+
 
 class actionHandler(tornado.web.RequestHandler):
     def __init__(self, *args, **kwargs):
@@ -834,19 +821,64 @@ class actionHandler(tornado.web.RequestHandler):
         self.set_header('x-powered-by','PHP/5.4.2')
     async def get(self, *args, **kwargs): 
         paramaters = { k: self.get_argument(k) for k in self.request.arguments }
+        print("GET " + self.request.uri + f' ({get_ip(self.request)}) ' , paramaters)
         ret = await action(paramaters)
         self.write(ret)
     async def post(self, *args, **kwargs): 
         paramaters = { k: self.get_argument(k) for k in self.request.arguments }
+        print("POST " + self.request.uri + f' ({get_ip(self.request)}) ' , paramaters)
         ret = await action(paramaters)
         self.write(ret)
+
+nfpage = """
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1"/>
+<title>404 - File or directory not found.</title>
+<style type="text/css">
+<!--
+body{margin:0;font-size:.7em;font-family:Verdana, Arial, Helvetica, sans-serif;background:#EEEEEE;}
+fieldset{padding:0 15px 10px 15px;} 
+h1{font-size:2.4em;margin:0;color:#FFF;}
+h2{font-size:1.7em;margin:0;color:#CC0000;} 
+h3{font-size:1.2em;margin:10px 0 0 0;color:#000000;} 
+#header{width:96%;margin:0 0 0 0;padding:6px 2% 6px 2%;font-family:"trebuchet MS", Verdana, sans-serif;color:#FFF;
+background-color:#555555;}
+#content{margin:0 0 0 2%;position:relative;}
+.content-container{background:#FFF;width:96%;margin-top:8px;padding:10px;position:relative;}
+-->
+</style>
+</head>
+<body>
+<div id="header"><h1>Server Error</h1></div>
+<div id="content">
+ <div class="content-container"><fieldset>
+  <h2>404 - File or directory not found.</h2>
+  <h3>The resource you are looking for might have been removed, had its name changed, or is temporarily unavailable.</h3>
+ </fieldset></div>
+</div>
+</body>
+</html>
+"""
+
+class My404Handler(tornado.web.RequestHandler):
+    # Override prepare() instead of get() to cover all possible HTTP methods.
+    def prepare(self):
+        self.set_status(404)
+        self.write(nfpage)
+    def post(self, *args, **kwargs):
+        pass
+    def get(self, *args, **kwargs):
+        pass
 
 if __name__ == '__main__':
     app = tornado.web.Application(handlers=[
         (r'/', actionHandler),
         (r'/action_page.php', actionHandler),
-
+        (r"(.*)", My404Handler),
     ])
     server = tornado.httpserver.HTTPServer(app, ssl_options=my_config["ssl_options"] )
     server.listen(my_config["listen_port"],my_config["listen_host"])
+    print("Done. Start serving http(s) on " + my_config["listen_host"]+ ":" + str(my_config["listen_port"]))
     tornado.ioloop.IOLoop.current().start()
