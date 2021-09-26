@@ -11,6 +11,6 @@
         ],
         "IPv6NdpLearningRanges": [
         ],
-        "GratuitousARPOnStartUP": false,
+        "GratuitousARPOnStartUP": true,
         "VppBridgeID": ${VPP_BRIDGE_ID}
 }

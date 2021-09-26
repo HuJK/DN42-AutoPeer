@@ -110,6 +110,7 @@ class tcp_whois():
 
 class git_whois():
     def __init__(self, url, local_git,pull_cooldown):
+        os.environ['GIT_SSH_COMMAND'] = "ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no"
         if not os.path.isdir(local_git):
             self.repo = Repo.clone_from(url, local_git,depth=1,env={'GIT_SSL_NO_VERIFY': '1'},config='http.sslVerify=false')
         else:

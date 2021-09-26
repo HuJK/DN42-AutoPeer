@@ -24,6 +24,7 @@ import ipaddress
 import traceback
 import tornado.web
 import tornado.gen
+from git import Repo
 import tornado.ioloop
 from urllib import parse
 import tornado.httpclient
@@ -35,6 +36,7 @@ from tornado.httpclient import HTTPClientError
 import DN42whois 
 
 print("Starting...")
+os.environ['GIT_SSH_COMMAND'] = "ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no"
 
 my_paramaters = json.loads(open("my_parameters.json").read())
 my_config = json.loads(open("my_config.json").read())
@@ -43,6 +45,8 @@ if my_config["jwt_secret"] == None:
     my_config["jwt_secret"] = ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(32))
     open("my_config.json","w").write(json.dumps(my_config,indent=4,ensure_ascii=False))
 jwt_secret = my_config["jwt_secret"]
+
+RRstate_repo = Repo("/git_sync_root")
 
 my_paramaters["myIPV4"] = os.environ['DN42_IPV4']
 my_paramaters["myIPV6"] = os.environ['DN42_IPV6']
@@ -248,7 +252,8 @@ def get_html(paramaters,peerSuccess=False):
         MP_BGP_Disabled = "disabled"
     if myHost == "":
         hasHost = True
-        hasHost_Readonly = 'onclick="return false;"'
+        hasHost_Readonly = 'onclick="alert(\\"Sorry, I don\'t have a public IP so that your endpoint can\'t be null.\\");return false;"'
+        hasHost_Readonly = 'onclick="alert(\'Sorry, I don\\\'t have a public IP so that your endpoint can\\\'t be null.\');return false;";'
         myHostDisplay = paramaters["myHostDisplay"]
     else:
         myHostDisplay = myHost + ":" + str(PeerID) if PeerID != None else "{Not assign yet, Register first}"
@@ -586,16 +591,21 @@ async def check_reg_paramater(paramaters):
     peerKey = paramaters["peerWG_Pub_Key"]
     if peerKey == None or len(peerKey) == 0:
         raise ValueError('"Your WG Public Key" can\'t be null.')
-    if os.path.isdir(f"{wgconfpath}/peerinfo"): #Check this node hasn't peer with us before
-        for old_conf_file in os.listdir(f"{wgconfpath}/peerinfo"):
-            if old_conf_file.endswith(".yaml") and os.path.isfile(f"{wgconfpath}/peerinfo/{old_conf_file}"):
-                old_conf = yaml.load(open(wgconfpath + "/peerinfo/" + old_conf_file).read(),Loader=yaml.SafeLoader)
-                if paramaters["peerIPV4"] != None and old_conf["peerIPV4"] == paramaters["peerIPV4"]:
-                    raise FileExistsError(f'This IPv4 address {paramaters["peerIPV4"]} already exisis in "{old_conf_file}", please remove the peering first.')
-                if paramaters["peerIPV6"] != None and old_conf["peerIPV6"] == paramaters["peerIPV6"]:
-                    raise FileExistsError(f'This IPv6 address {paramaters["peerIPV6"]} already exisis in "{old_conf_file}", please remove the peering first.')
-                if old_conf["peerWG_Pub_Key"] == peerKey:
-                    raise FileExistsError(f'This wireguard public key already exisis in "{old_conf_file}", please remove the peering first.')
+    RRstate_repo.remotes.origin.pull()
+    for node_name in os.listdir("/git_sync_root"):
+        if not os.path.isdir("/git_sync_root/" + node_name):
+            continue
+        conf_dir = "/git_sync_root/" + node_name + "/" + wgconfpath + "/peerinfo"
+        if os.path.isdir(conf_dir): #Check this node hasn't peer with us before
+            for old_conf_file in os.listdir(conf_dir):
+                if old_conf_file.endswith(".yaml") and os.path.isfile(f"{conf_dir}/{old_conf_file}"):
+                    old_conf = yaml.load(open(f"{conf_dir}/{old_conf_file}").read(),Loader=yaml.SafeLoader)
+                    if paramaters["peerIPV4"] != None and old_conf["peerIPV4"] == paramaters["peerIPV4"]:
+                        raise FileExistsError(f'This IPv4 address {paramaters["peerIPV4"]} already exisis in "{node_name + "/" + old_conf_file}", please remove the peering first.')
+                    if paramaters["peerIPV6"] != None and old_conf["peerIPV6"] == paramaters["peerIPV6"]:
+                        raise FileExistsError(f'This IPv6 address {paramaters["peerIPV6"]} already exisis in "{node_name + "/" + old_conf_file}", please remove the peering first.')
+                    if old_conf["peerWG_Pub_Key"] == peerKey:
+                        raise FileExistsError(f'This wireguard public key already exisis in "{node_name + "/" + old_conf_file}", please remove the peering first.')
     return paramaters
 
 def replace_str(text,replace):
@@ -686,12 +696,11 @@ def newConfig(paramaters):
         if MP_BGP == True:
             ipv4filter = ""
         else:
-            ipv4filter = textwrap.dedent("""\
-                                            ipv4 {
-                                                import none;
-                                                export none;
-                                            };
-                                        """)
+            ipv4filter =                     """ipv4 {
+                                                    import none;
+                                                    export none;
+                                                };
+                                            """
         birdconf += textwrap.dedent(f"""\
                                             protocol bgp dn42_{peerName}_v6 from dnpeers {{
                                                 neighbor {birdPeerV6} as {peerASN};
@@ -718,7 +727,7 @@ def newConfig(paramaters):
     }
 
 def saveConfig(new_config):
-    print_and_exec("git -C /git_sync_root pull")
+    RRstate_repo.remotes.origin.pull()
     for path,content in new_config["config"].items():
         print("================================")
         print(path)
@@ -731,9 +740,9 @@ def saveConfig(new_config):
             if content.startswith("#!"):
                 os.chmod(path, 0o755)
         print("================================")
-    print_and_exec( "git -C /git_sync_root add -A")
-    print_and_exec(f"git -C /git_sync_root commit -m {node_name}-addpeer")
-    print_and_exec( "git -C /git_sync_root push")
+    RRstate_repo.git.add(all=True)
+    RRstate_repo.index.commit(f'{node_name} peer add')
+    RRstate_repo.remotes.origin.push()
     print_and_exec("sv start " + shlex.quote(new_config["name"]))
     print_and_exec("birdc configure")
     return None
@@ -752,7 +761,7 @@ def print_and_rmrf(tree):
                                     
 def deleteConfig(peerID,peerName):
     if_name = "dn42-" + peerName
-    print_and_exec("git -C /git_sync_root pull")
+    RRstate_repo.remotes.origin.pull()
     print_and_exec(f"sv stop wg_{if_name}")
     print_and_rm(f"{wgconfpath}/{if_name}.conf")
     print_and_rmrf(f"/git_sync_self/ow/etc/service/wg_{if_name}")
@@ -760,9 +769,9 @@ def deleteConfig(peerID,peerName):
     print_and_rm(f"/git_sync_self/etc/wggo-vpp_template/if/{if_name}.json")  
     print_and_rm(f"{wgconfpath}/peerinfo/{peerID}.yaml")
     print_and_rm(f"{bdconfpath}/{if_name}.conf")
-    print_and_exec( "git -C /git_sync_root add -A")
-    print_and_exec(f"git -C /git_sync_root commit -m {node_name}-delpeer")
-    print_and_exec( "git -C /git_sync_root push")
+    RRstate_repo.git.add(all=True)
+    RRstate_repo.index.commit(f'{node_name} peer del')
+    RRstate_repo.remotes.origin.push()
     print_and_exec("birdc configure")
     return None
 
@@ -806,7 +815,7 @@ async def action(paramaters):
                 if int(paramaters["PeerID"]) < 0 or int(paramaters["PeerID"]) > 65535:
                     raise ValueError("Invalid PeerID")
         except Exception as e:
-            filename = paramaters["PeerID"] + ".yaml"
+            filename = node_name + "/" + paramaters["PeerID"] + ".yaml"
             paramaters["PeerID"] = None
             raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), filename)
         if action=="OK":
@@ -823,7 +832,7 @@ async def action(paramaters):
             try:
                 peerInfo = yaml.load(open(wgconfpath + "/peerinfo/" + paramaters["PeerID"] + ".yaml").read(),Loader=yaml.SafeLoader)
             except FileNotFoundError as e:
-                e.filename = paramaters["PeerID"] + ".yaml"
+                e.filename = node_name + "/" + paramaters["PeerID"] + ".yaml"
                 raise e
             peerInfo = { valid_key: peerInfo[valid_key] for valid_key in client_valid_keys if valid_key in peerInfo }
             paramaters = {**paramaters,**peerInfo, **my_paramaters}
@@ -842,7 +851,7 @@ async def action(paramaters):
             try:
                 peerInfo = yaml.load(open(wgconfpath + "/peerinfo/" + paramaters["PeerID"] + ".yaml").read(),Loader=yaml.SafeLoader)
             except FileNotFoundError as e:
-                e.filename = paramaters["PeerID"] + ".yaml"
+                e.filename =  node_name + "/" + paramaters["PeerID"] + ".yaml"
                 raise e
             if peerInfo["peerASN"] != paramaters["peerASN"]:
                 raise PermissionError("Peer ASN not match")
@@ -882,7 +891,7 @@ async def action(paramaters):
             title = "404 - File or directory not found."
             errorcode = 404
             e = "The resource you are looking for might have been removed, had its name changed, or is temporarily unavailable.\n    " + str(e.filename)
-        return errcode, get_err_page(paramaters,title,traceback.format_exc())
+        #return errcode, get_err_page(paramaters,title,traceback.format_exc())
         return errcode, get_err_page(paramaters,title,e)
 
 ipv4s = [ipaddress.ip_network(n) for n in requests.get("https://www.cloudflare.com/ips-v4").text.split("\n")]
