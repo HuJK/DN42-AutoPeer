@@ -6,20 +6,22 @@ import time
 import pgpy
 import yaml
 import json
+import shlex
 import errno
-import pathlib
-import asyncio
+import shutil
 import random
 import string
 import socket
 import base64
+import pathlib
+import asyncio
 import hashlib
 import OpenSSL
+import textwrap
 import requests
 import datetime
 import ipaddress
 import traceback
-from subprocess import Popen, PIPE, STDOUT
 import tornado.web
 import tornado.gen
 import tornado.ioloop
@@ -28,10 +30,12 @@ import tornado.httpclient
 from Crypto.PublicKey import RSA
 from ipaddress import IPv4Network
 from ipaddress import IPv6Network
+from subprocess import Popen, PIPE, STDOUT
 from tornado.httpclient import HTTPClientError
 import DN42whois 
 
 print("Starting...")
+
 my_paramaters = json.loads(open("my_parameters.json").read())
 my_config = json.loads(open("my_config.json").read())
 
@@ -39,6 +43,29 @@ if my_config["jwt_secret"] == None:
     my_config["jwt_secret"] = ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(32))
     open("my_config.json","w").write(json.dumps(my_config,indent=4,ensure_ascii=False))
 jwt_secret = my_config["jwt_secret"]
+
+my_paramaters["myIPV4"] = os.environ['DN42_IPV4']
+my_paramaters["myIPV6"] = os.environ['DN42_IPV6']
+my_paramaters["myHostDisplay"] = os.environ['AZURE_DOMAIN']
+my_paramaters["myASN"] = os.environ['DN42_E_AS']
+my_paramaters["myContact"] = os.environ['DN42_CONTACT']
+my_paramaters["myWG_Pub_Key"] = os.environ['WG_PUBKEY']
+
+my_config["html_title"] = os.environ['DN42AP_TITLE']
+my_config["listen_port"] = os.environ['CLOUDFLARED_PORT']
+my_config["myWG_Pri_Key"] = os.environ['WG_PRIVKEY']
+my_config["wgconfpath"] = "/etc/dn42ap"
+my_config["bdconfpath"] = "/etc/bird/peers"
+my_config["admin_mnt"] = os.environ['DN42AP_ADMIN']
+
+node_name = os.environ['NODE_NAME']
+
+"""
+if my_config["jwt_secret"] == None:
+    jwt_secret=  ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(32))
+else:
+    jwt_secret = my_config["jwt_secret"]
+"""
 
 wgconfpath = my_config["wgconfpath"]
 bdconfpath = my_config["bdconfpath"]
@@ -132,7 +159,7 @@ async def get_signature_html(baseURL,paramaters):
 <h3>Dear { peerADMname }:</h3>
 """
     if len(methods_class["Supported"]) == 0:
-        retstr += f"""<h4>&nbsp;&nbsp;&nbsp;&nbsp;Sorry, we couldn't find any available authentication method in your <a href="{baseURL}/data/mntner/{peerMNT}" target="_blank">mntner</a> object or <a href="{baseURL}/data/person/{peerADM}" target="_blank"> admin contact</a> in the DN42 registry.</h4><h4>Please contact me to peer manually.</h4>"""
+        retstr += f"""<h4>&nbsp;&nbsp;&nbsp;&nbsp;Sorry, we couldn't find any available authentication method in your <a href="{baseURL}/data/mntner/{peerMNT}" target="_blank">mntner</a> object or <a href="{baseURL}/data/person/{peerADM}" target="_blank"> admin contact</a> in the DN42 registry.</h4><h4>Please <a href="{my_paramaters["myContact"]}" target="_blank">contact me</a> to peer manually.</h4>"""
     else:
         retstr += f"""<h4>&nbsp;&nbsp;&nbsp;&nbsp;Please sign our message with your private key registered in your <a href="{baseURL}/data/mntner/{peerMNT}" target="_blank">mntner object</a> or <a href="{baseURL}/data/person/{peerADM}" target="_blank"> admin contact</a> in the DN42 registry.</h4>"""
     retstr += "<h3><font color='red'><b>Supported</b></font> auth method: </h3>" if len(list(methods_class["Supported"].keys())) != 0 else ""
@@ -208,17 +235,23 @@ def get_html(paramaters,peerSuccess=False):
     if myIPV4 == "":
         hasIPV4 = False
         hasIPV4Disabled = "disabled"
+        peerIPV4 = "Sorry, I don't support IPv4 address."
     if myIPV6 == "":
         hasIPV6 = False
         hasIPV6Disabled = "disabled"
+        peerIPV6 = "Sorry, I don't support IPv6 address."
     if myIPV6LL == "":
         hasIPV6LL = False
         hasIPV6LLDisabled = "disabled"
+        peerIPV6LL = "Sorry, My interface doesn't support IPv6 link local address."
     if not (myIPV4!="") and (myIPV6!="" or myIPV6LL!=""):
         MP_BGP_Disabled = "disabled"
     if myHost == "":
         hasHost = True
         hasHost_Readonly = 'onclick="return false;"'
+        myHostDisplay = paramaters["myHostDisplay"]
+    else:
+        myHostDisplay = myHost + ":" + str(PeerID) if PeerID != None else "{Not assign yet, Register first}"
     return f"""
 <!DOCTYPE html>
 <html>
@@ -282,9 +315,9 @@ def get_html(paramaters,peerSuccess=False):
    <tr><td>DN42 IPv6</td><td><input type="text" value="{myIPV6}" readonly /></td></tr>
    <tr><td>IPv6 Link local</td><td><input type="text" value="{myIPV6LL}" readonly /></td></tr>
    <tr><td>Connectrion Info: </td><td>  </td></tr>
-   <tr><td>My Clearnet Host</td><td><input type="text" value="{myHost}:{PeerID if PeerID != None else "{{Not assign yet, Register first}}"}" readonly /></td></tr>
+   <tr><td>My Clearnet Host</td><td><input type="text" value="{myHostDisplay}" readonly /></td></tr>
    <tr><td>My WG Public Key</td><td><input type="text" value="{myWG_Pub_Key}" readonly /></td></tr>
-   <tr><td>My Telegram ID</td><td><input type="text" value="{myContact}" readonly /></td></tr>
+   <tr><td>My Contact</td><td><input type="text" value="{myContact}" readonly /></td></tr>
  </table>
 </form>
 </body>
@@ -565,11 +598,16 @@ async def check_reg_paramater(paramaters):
                     raise FileExistsError(f'This wireguard public key already exisis in "{old_conf_file}", please remove the peering first.')
     return paramaters
 
+def replace_str(text,replace):
+    for k,v in replace.items():
+        text = text.replace(k,v)
+    return text
+
 def newConfig(paramaters):
     peerASN = paramaters["peerASN"][2:]
     peerKey = paramaters["peerWG_Pub_Key"]
     peerName = paramaters["peerContact"]
-    myport = paramaters["PeerID"]
+    peerID = paramaters["PeerID"]
     peerHost = paramaters["peerHost"]
     peerIPV4 = paramaters["peerIPV4"]
     peerIPV6 = paramaters["peerIPV6"]
@@ -588,42 +626,46 @@ def newConfig(paramaters):
     
     portlist = list(sorted(map(lambda x:int(x.split("-")[0]),filter(lambda x:x[-4:] == "conf", os.listdir(wgconfpath)))))
     # portlist=[23001, 23002, 23003,23004,23005,23006,23007,23008,23009,23088]
-    if myport == None:
+    if peerID == None:
         port_range = [eval(my_config["wg_port_search_range"][0])(peerASN) , eval(my_config["wg_port_search_range"][1])(peerASN)]
         for p in range(*port_range):
             if p not in portlist:
-                myport = p
+                peerID = p
                 break
     else:
-        myport = int(myport)
-    if myport == None:
+        peerID = int(peerID)
+    if peerID == None:
         raise IndexError("PeerID not available, contact my to peer manually. ")
-    if myport in portlist:
+    if peerID in portlist:
         raise IndexError("PeerID already exists.")
-    paramaters["PeerID"] = myport
-    peerName = str(int(myport) % 10000).zfill(4) + peerName
+    paramaters["PeerID"] = peerID
+    peerName = str(int(peerID) % 10000).zfill(4) + peerName
     peerName = peerName.replace("-","_")
     peerName = re.sub(r"[^A-Za-z0-9_]+", '', peerName)
     peerName = peerName[:10]
-    wsconf = f"""[Interface]
-PrivateKey = {privkey}
-ListenPort = {0 if (my_paramaters["myHost"] == "" or my_paramaters["myHost"] == None) else myport}
-[Peer]
-PublicKey = {peerKey} {chr(10) + "Endpoint = " + peerHost if peerHost != None else ""}
-AllowedIPs = 0.0.0.0/0,::/0"""
     
-    wssh = f"""#!/bin/bash
-ip link add dev dn42-{peerName} type wireguard
-wg setconf dn42-{peerName} {myport}-{peerName}.conf
-ip link set dn42-{peerName} up
-"""
-    if myIPV6LL != "" and myIPV6LL != None:
-        wssh += f"ip addr add {myIPV6LL}/64 dev dn42-{peerName}\n"
-    if peerIPV4 != None:
-        wssh += f"ip addr add {myIPV4} peer {peerIPV4} dev dn42-{peerName}\n"
-    if peerIPV6 != None:
-        wssh += f"ip addr add {myIPV6} peer {peerIPV6} dev dn42-{peerName}\n"
-        wssh += f"ip route add {peerIPV6}/128 src {myIPV6} dev dn42-{peerName}\n"
+    if_name = "dn42-" + peerName
+    
+    replace_dict = {
+        "__WG_PRIVKEY__": my_config["myWG_Pri_Key"],
+        "__WG_PORT__": str(0),
+        "__REMOTE_PUB_KEY__": peerKey,
+        "__REMOTE_CONN__": peerHost,
+        "__WG_CONF_PATH__":  f"{wgconfpath}/{if_name}.conf",
+        "__WG_NAME__": if_name,
+        "__PEER_ID__": str(peerID),
+        "__REMOTE_IPV4__": peerIPV4 + "/32" if peerIPV4 != None else "",
+        "__REMOTE_IPV6__": peerIPV6 + "/128" if peerIPV6 != None else "",
+        "__REMOTE_IPV6_LL__": peerIPV6LL + "/128" if peerIPV6LL != None else ""
+    }
+    wgconf = open("templates/wg.conf").read()
+    wgconf = replace_str(wgconf,replace_dict)
+    
+    sv_run_sh = open("templates/sv_run.sh").read()
+    sv_run_sh = replace_str(sv_run_sh,replace_dict)
+    
+    wg_if_json = open("templates/wggo-vpp_if.json").read()
+    wg_if_json = replace_str(wg_if_json,replace_dict)
     
     birdconf = ""
     birdPeerV4 = peerIPV4
@@ -631,43 +673,53 @@ ip link set dn42-{peerName} up
     if peerIPV6LL != None:
         birdPeerV6 = peerIPV6LL
     if peerIPV4 != None and MP_BGP == False:
-        birdconf += f"""protocol bgp dn42_{peerName}_v4 from dnpeers {{
-    neighbor {birdPeerV4} as {peerASN};
-    direct;
-    ipv6 {{
-        import none;
-        export none;
-    }};
-}};
-"""
+        birdconf += textwrap.dedent(f"""\
+                                    protocol bgp dn42_{peerName}_v4 from dnpeers {{
+                                        neighbor {birdPeerV4} as {peerASN};
+                                        ipv6 {{
+                                            import none;
+                                            export none;
+                                        }};
+                                    }};
+                                    """)
     if peerIPV6 != None or peerIPV6LL != None:
-        birdconf += f"""protocol bgp dn42_{peerName}_v6 from dnpeers {{
-    neighbor {birdPeerV6} % 'dn42-{peerName}' as {peerASN};
-    direct;"""
-        if MP_BGP == False:
-            birdconf += """
-    ipv4 {
-        import none;
-        export none;
-    };"""
-        birdconf += "\n};"
-    
+        if MP_BGP == True:
+            ipv4filter = ""
+        else:
+            ipv4filter = textwrap.dedent("""\
+                                            ipv4 {
+                                                import none;
+                                                export none;
+                                            };
+                                        """)
+        birdconf += textwrap.dedent(f"""\
+                                            protocol bgp dn42_{peerName}_v6 from dnpeers {{
+                                                neighbor {birdPeerV6} as {peerASN};
+                                                {ipv4filter}
+                                            }};
+                                            """)
+                                    
     paramaters = { valid_key: paramaters[valid_key] for valid_key in client_valid_keys }
     paramaters["peer_signature"] = ""
     paramaters["peer_pub_key_pgp"] = ""
     paramaters["peer_plaintext"] = ""
     paramaters["peerName"] = peerName
     return {
-        f"{wgconfpath}/{myport}-{peerName}.conf": wsconf,
-        f"{wgconfpath}/{myport}-{peerName}.sh": wssh,
-        f"{wgconfpath}/peerinfo/{myport}.yaml": yaml.dump(paramaters),
-        f"{bdconfpath}/{myport}-{peerName}.conf": birdconf,
-        "paramaters": paramaters
-           }
+        "config":{
+            f"{wgconfpath}/{if_name}.conf": wgconf,
+            f"/git_sync_self/ow/etc/service/wg_{if_name}/run": sv_run_sh,
+                             f"/etc/service/wg_{if_name}/run": sv_run_sh,
+            f"/git_sync_self/etc/wggo-vpp_template/if/{if_name}.json": wg_if_json,
+            f"{wgconfpath}/peerinfo/{peerID}.yaml": yaml.dump(paramaters),
+            f"{bdconfpath}/{if_name}.conf": birdconf
+        },
+        "name": f"wg_{if_name}",
+        "paramaters": paramaters,
+    }
 
 def saveConfig(new_config):
-    needexec = []
-    for path,content in new_config.items():
+    print_and_exec("git -C /git_sync_root pull")
+    for path,content in new_config["config"].items():
         print("================================")
         print(path)
         print(content)
@@ -676,31 +728,41 @@ def saveConfig(new_config):
             os.makedirs(fileparent, mode=0o700 , exist_ok=True)
         with open(path,"w") as conffd:
             conffd.write(content)
-        if path[-2:] == "sh":
-            os.chmod(path, 0o755)
-            needexec += [path]
+            if content.startswith("#!"):
+                os.chmod(path, 0o755)
         print("================================")
-    saved_cwd = os.getcwd()
-    os.chdir(wgconfpath)
-    print(needexec)
-    list(map(os.system,needexec))
-    os.system("birdc configure")
-    os.chdir(saved_cwd)
+    print_and_exec( "git -C /git_sync_root add -A")
+    print_and_exec(f"git -C /git_sync_root commit -m {node_name}-addpeer")
+    print_and_exec( "git -C /git_sync_root push")
+    print_and_exec("sv start " + shlex.quote(new_config["name"]))
+    print_and_exec("birdc configure")
     return None
 
 def print_and_exec(command):
     print(command)
     os.system(command)
+                                    
 def print_and_rm(file):
     print("rm " + file)
     os.remove(file)
 
-def deleteConfig(myport,peerName):
-    print_and_exec(f"ip link del dev dn42-{peerName}")
-    print_and_rm(f"{wgconfpath}/{myport}-{peerName}.conf")
-    print_and_rm(f"{wgconfpath}/{myport}-{peerName}.sh")
-    print_and_rm(f"{wgconfpath}/peerinfo/{myport}.yaml")
-    print_and_rm(f"{bdconfpath}/{myport}-{peerName}.conf")
+def print_and_rmrf(tree):
+    print("rm -rf " + tree)
+    shutil.rmtree(tree)
+                                    
+def deleteConfig(peerID,peerName):
+    if_name = "dn42-" + peerName
+    print_and_exec("git -C /git_sync_root pull")
+    print_and_exec(f"sv stop wg_{if_name}")
+    print_and_rm(f"{wgconfpath}/{if_name}.conf")
+    print_and_rmrf(f"/git_sync_self/ow/etc/service/wg_{if_name}")
+    print_and_rmrf(                 f"/etc/service/wg_{if_name}") 
+    print_and_rm(f"/git_sync_self/etc/wggo-vpp_template/if/{if_name}.json")  
+    print_and_rm(f"{wgconfpath}/peerinfo/{peerID}.yaml")
+    print_and_rm(f"{bdconfpath}/{if_name}.conf")
+    print_and_exec( "git -C /git_sync_root add -A")
+    print_and_exec(f"git -C /git_sync_root commit -m {node_name}-delpeer")
+    print_and_exec( "git -C /git_sync_root push")
     print_and_exec("birdc configure")
     return None
 
@@ -796,20 +858,23 @@ async def action(paramaters):
             paramaters = await check_reg_paramater(paramaters)
             new_config = newConfig(paramaters)
             paramaters = new_config["paramaters"]
-            del new_config["paramaters"]
             saveConfig(new_config)
             paramaters = {**paramaters, **my_paramaters}
+            if paramaters["myHost"] == "" or paramaters["myHost"] == None:
+                myHostDisplay = paramaters["myHostDisplay"]
+            else:
+                myHostDisplay = myHost + ":" + str(paramaters["PeerID"])
             myInfo = {
                 "My ASN":          paramaters["myASN"],
                 "DN42 IPv4":       paramaters["myIPV4"],
                 "DN42 IPv6":       paramaters["myIPV6"],
                 "IPv6 Link local": paramaters["myIPV6LL"],
-                "Endpoint Address":paramaters["myHost"] + ":" + str(paramaters["PeerID"]),
+                "Endpoint Address":myHostDisplay,
                 "My WG Public Key":paramaters["myWG_Pub_Key"],
-                "My Telegram ID":  paramaters["myContact"]
+                "My Contact":  paramaters["myContact"]
             }
             return 200, get_err_page(paramaters, f'Your PeerID is: { paramaters["PeerID"] }<br>My info:',yaml.dump(myInfo, sort_keys=False),big_title="Peer Success!")
-        return get_err_page(paramaters,"400 - Bad Request",ValueError("Unknow action" + str(action)))
+        return 400, get_err_page(paramaters,"400 - Bad Request",ValueError("Unknow action" + str(action)))
     except Exception as e:
         title = type(e).__name__
         errcode = 400
@@ -817,7 +882,7 @@ async def action(paramaters):
             title = "404 - File or directory not found."
             errorcode = 404
             e = "The resource you are looking for might have been removed, had its name changed, or is temporarily unavailable.\n    " + str(e.filename)
-        #return errcode, get_err_page(paramaters,title,traceback.format_exc())
+        return errcode, get_err_page(paramaters,title,traceback.format_exc())
         return errcode, get_err_page(paramaters,title,e)
 
 ipv4s = [ipaddress.ip_network(n) for n in requests.get("https://www.cloudflare.com/ips-v4").text.split("\n")]

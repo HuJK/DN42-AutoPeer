@@ -1,0 +1,16 @@
+{
+        "uid": __PEER_ID__,
+        "secret": "random",
+        "IPv4ArpResponseRanges": [
+                "__REMOTE_IPV4__"
+        ],
+        "IPv4ArpLearningRanges": [
+        ],
+        "IPv6NdpNeighAdvRanges": [
+                "__REMOTE_IPV6__","__REMOTE_IPV6_LL__"
+        ],
+        "IPv6NdpLearningRanges": [
+        ],
+        "GratuitousARPOnStartUP": false,
+        "VppBridgeID": ${VPP_BRIDGE_ID}
+}
