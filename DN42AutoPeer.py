@@ -61,6 +61,7 @@ my_config["myWG_Pri_Key"] = os.environ['WG_PRIVKEY']
 my_config["wgconfpath"] = "/etc/dn42ap"
 my_config["bdconfpath"] = "/etc/bird/peers"
 my_config["admin_mnt"] = os.environ['DN42AP_ADMIN']
+my_config["urlprefix"] = os.environ['DN42AP_URLPREFIX']
 
 node_name = os.environ['NODE_NAME']
 
@@ -181,7 +182,7 @@ async def get_signature_html(baseURL,paramaters):
         retstr += "</table>"
     retstr += f"""
 <br>
-<form action="/action_page.php" method="post">\n"""
+<form action="action_page.php" method="post">\n"""
     paramaters = { valid_key: paramaters[valid_key] for valid_key in client_valid_keys }
     paramaters["peer_plaintext"] = text2sign
     for k,v in paramaters.items():
@@ -286,7 +287,7 @@ def get_html(paramaters,peerSuccess=False):
 <body>
 <h1>{ my_config["html_title"] }</h1>
 <h3>{"Peer success! " if peerSuccess else "Please fill "}Your Info</h3>
-<form action="/action_page.php" method="post" class="markdown-body">
+<form action="action_page.php" method="post" class="markdown-body">
  <h2>Authentication</h2>
  <table class="table">
    <tr><td>Your ASN</td><td><input type="text" value="{peerASN if peerASN != None else ""}" name="peerASN" style="width:50%" /><input type="submit" name="action" value="Get Signature" /></td></tr>
@@ -517,7 +518,7 @@ background-color:#555555;}}
   <h2>{ title}</h2>
   <h3>{str(error).replace(chr(10),"<br>").replace(" ","&nbsp;")}</h3>
   <h3></h3>
-  <form action="/action_page.php" method="post">\n"""
+  <form action="action_page.php" method="post">\n"""
     paramaters = { valid_key: paramaters[valid_key] for valid_key in client_valid_keys }
     for k,v in paramaters.items():
         if v == None:
@@ -972,9 +973,21 @@ class My404Handler(tornado.web.RequestHandler):
         pass
 
 if __name__ == '__main__':
+    if my_config["urlprefix"] == "":
+        url_prefix = ""
+        url_prefix_pre = ""
+    elif my_config["urlprefix"][-1] == "/":
+        url_prefix = my_config["urlprefix"]
+        url_prefix_pre = my_config["urlprefix"][:-1]
+    else:
+        url_prefix = my_config["urlprefix"] + "/"
+        url_prefix_pre = my_config["urlprefix"]
     app = tornado.web.Application(handlers=[
-        (r'/', actionHandler),
-        (r'/action_page.php', actionHandler),
+        ('/' + url_prefix, actionHandler),
+        ('/' + url_prefix + 'action_page.php', actionHandler),
+        ('/' + url_prefix_pre, tornado.web.RedirectHandler, {"url": url_prefix}),
+        ('/' + url_prefix_pre, tornado.web.RedirectHandler, {"url": url_prefix}),
+        ('/', tornado.web.RedirectHandler, {"url": url_prefix}),
         (r"(.*)", My404Handler),
     ])
     server = tornado.httpserver.HTTPServer(app, ssl_options=my_config["ssl_options"] )

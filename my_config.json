@@ -5,6 +5,7 @@
     "listen_port": "4242",
     "ssl_options": null,
     "myWG_Pri_Key": "",
+    "urlprefix": "",
     "wgconfpath": "/etc/dn42ap",
     "bdconfpath": "/etc/bird/peers",
     "dn42_whois_server": [
