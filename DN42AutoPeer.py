@@ -56,7 +56,7 @@ my_paramaters["myContact"] = os.environ['DN42_CONTACT']
 my_paramaters["myWG_Pub_Key"] = os.environ['WG_PUBKEY']
 
 my_config["html_title"] = os.environ['DN42AP_TITLE']
-my_config["listen_port"] = os.environ['CLOUDFLARED_PORT']
+my_config["listen_port"] = os.environ['DN42AP_PORT']
 my_config["myWG_Pri_Key"] = os.environ['WG_PRIVKEY']
 my_config["wgconfpath"] = "/etc/dn42ap"
 my_config["bdconfpath"] = "/etc/bird/peers"
