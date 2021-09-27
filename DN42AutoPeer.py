@@ -50,7 +50,7 @@ RRstate_repo = Repo("/git_sync_root")
 
 my_paramaters["myIPV4"] = os.environ['DN42_IPV4']
 my_paramaters["myIPV6"] = os.environ['DN42_IPV6']
-my_paramaters["myHostDisplay"] = os.environ['AZURE_DOMAIN']
+my_paramaters["myHostDisplay"] = os.environ['DN42AP_HOST_DISPLAY']
 my_paramaters["myASN"] = os.environ['DN42_E_AS']
 my_paramaters["myContact"] = os.environ['DN42_CONTACT']
 my_paramaters["myWG_Pub_Key"] = os.environ['WG_PUBKEY']
