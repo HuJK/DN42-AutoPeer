@@ -216,7 +216,6 @@ def whois_server():
     print('prepareing for whois...')
     my_whois = git_whois("https://github.com/KusakabeSi/dn42-registry","whoisdata",600)
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.settimeout(10)
     s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     s.bind((HOST, PORT))
     s.listen(5)
@@ -244,7 +243,6 @@ def whois_server():
                     conn.close()
                     break
         except Exception as e:
-            conn.close()
             #raise(e)
             print(e)
         
