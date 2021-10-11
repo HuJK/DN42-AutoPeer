@@ -19,7 +19,7 @@
         "fd10:127::/32"
     ],
     "valid_ipv6_linklocals": [
-        "fe80::/10"
+        "fe80::/64"
     ],
     "wg_port_search_range": [
         "lambda peerASN:20000+int(peerASN[-4:])",
