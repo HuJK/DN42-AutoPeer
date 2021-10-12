@@ -50,10 +50,20 @@ RRstate_repo = Repo("/git_sync_root")
 
 my_paramaters["myIPV4"] = os.environ['DN42_IPV4']
 my_paramaters["myIPV6"] = os.environ['DN42_IPV6']
+my_paramaters["myIPV6LL"] = os.environ['DN42_IPV6_LL']
 my_paramaters["myHostDisplay"] = os.environ['DN42AP_HOST_DISPLAY']
-my_paramaters["myASN"] = os.environ['DN42_E_AS']
+my_paramaters["myASN"] = "AS" + os.environ['DN42_E_AS']
 my_paramaters["myContact"] = os.environ['DN42_CONTACT']
 my_paramaters["myWG_Pub_Key"] = os.environ['WG_PUBKEY']
+
+def es2none(p):
+    if p == "":
+        return None
+    return p
+my_paramaters["myIPV4"] = es2none(my_paramaters["myIPV4"])
+my_paramaters["myIPV6"] = es2none(my_paramaters["myIPV6"])
+my_paramaters["myIPV6LL"] = es2none(my_paramaters["myIPV6LL"])
+my_paramaters["myHost"] = es2none(my_paramaters["myHost"])
 
 my_config["html_title"] = os.environ['DN42AP_TITLE']
 my_config["listen_port"] = os.environ['DN42AP_PORT']
@@ -74,7 +84,7 @@ else:
 
 wgconfpath = my_config["wgconfpath"]
 bdconfpath = my_config["bdconfpath"]
-client_valid_keys = ["peer_plaintext","peer_pub_key_pgp","peer_signature", "peerASN", "hasIPV4", "peerIPV4", "hasIPV6", "peerIPV6", "hasIPV6LL", "peerIPV6LL","MP_BGP", "hasHost", "peerHost", "peerWG_Pub_Key", "peerContact", "PeerID"]
+client_valid_keys = ["peer_plaintext","peer_pub_key_pgp","peer_signature", "peerASN", "hasIPV4", "peerIPV4", "hasIPV6", "peerIPV6", "hasIPV6LL", "peerIPV6LL","MP_BGP","Ext_Nh", "hasHost", "peerHost", "peerWG_Pub_Key", "peerContact", "PeerID"]
 dn42repo_base = my_config["dn42repo_base"]
 DN42_valid_ipv4s = my_config["DN42_valid_ipv4s"]
 DN42_valid_ipv6s = my_config["DN42_valid_ipv6s"]
@@ -216,6 +226,8 @@ def get_html(paramaters,peerSuccess=False):
     peerIPV6LL = paramaters["peerIPV6LL"]
     MP_BGP = paramaters["MP_BGP"]
     MP_BGP_Disabled = ""
+    Ext_Nh = paramaters["Ext_Nh"]
+    Ext_Nh_Disabled = ""
     hasHost = paramaters["hasHost"]
     hasHost_Readonly = ""
     peerHost = paramaters["peerHost"]
@@ -251,6 +263,7 @@ def get_html(paramaters,peerSuccess=False):
         peerIPV6LL = "Sorry, My interface doesn't support IPv6 link local address."
     if not (myIPV4!="") and (myIPV6!="" or myIPV6LL!=""):
         MP_BGP_Disabled = "disabled"
+        Ext_Nh_Disabled = "disabled"
     if myHost == "":
         hasHost = True
         hasHost_Readonly = 'onclick="alert(\\"Sorry, I don\'t have a public IP so that your endpoint can\'t be null.\\");return false;"'
@@ -301,6 +314,7 @@ def get_html(paramaters,peerSuccess=False):
    <tr><td><input type="checkbox" name="hasIPV6" {"checked" if hasIPV6 else ""} {hasIPV6Disabled}>DN42 IPv6</td><td><input type="text" value="{peerIPV6 if peerIPV6 != None else ""}" name="peerIPV6" {hasIPV6Disabled} /></td></tr>
    <tr><td><input type="checkbox" name="hasIPV6LL" {"checked" if hasIPV6LL else ""} {hasIPV6LLDisabled}>IPv6 Link local</td><td><input type="text" value="{peerIPV6LL if peerIPV6LL != None else ""}" name="peerIPV6LL" {hasIPV6LLDisabled} /></td></tr>
    <tr><td><input type="checkbox" name="MP_BGP" {"checked" if MP_BGP else ""} {MP_BGP_Disabled} >Multiprotocol BGP</td><td></td></tr>
+   <tr><td><input type="checkbox" name="Ext_Nh" {"checked" if Ext_Nh else ""} {Ext_Nh_Disabled} >Extended next hop</td><td></td></tr>
    <tr><td>Connectrion Info: </td><td>  </td></tr>
    <tr><td><input type="checkbox" name="hasHost" {"checked" if hasHost else ""} {hasHost_Readonly}>Your Clearnet Host</td><td><input type="text" value="{peerHost if peerHost != None else ""}" name="peerHost" /></td></tr>
    <tr><td>Your WG Public Key</td><td><input type="text" value="{peerWG_Pub_Key}" name="peerWG_Pub_Key" /></td></tr>
@@ -554,7 +568,7 @@ async def check_reg_paramater(paramaters):
     if paramaters["hasIPV4"]:
         check_valid_ip_range(IPv4Network,DN42_valid_ipv4s,paramaters["peerIPV4"],"DN42 ip")
         peerIPV4_info = DN42whois.proc_data((await whois_query(paramaters["peerIPV4"])))
-        if paramaters["myIPV4"] == None or paramaters["myIPV4"] == "":
+        if paramaters["myIPV4"] == None:
             raise NotImplementedError("Sorry, I don't have IPv4 address.")
         if peerIPV4_info["admin-c"][0] != admin:
             raise PermissionError("IP " + paramaters["peerIPV4"] + " owned by " + peerIPV4_info["admin-c"][0] + " instead of " + admin)
@@ -563,7 +577,7 @@ async def check_reg_paramater(paramaters):
     if paramaters["hasIPV6"]:
         check_valid_ip_range(IPv6Network,DN42_valid_ipv6s,paramaters["peerIPV6"],"DN42 ipv6")
         peerIPV6_info = DN42whois.proc_data((await whois_query(paramaters["peerIPV6"])))
-        if paramaters["myIPV6"] == None or paramaters["myIPV6"] == "":
+        if paramaters["myIPV6"] == None:
             raise NotImplementedError("Sorry, I don't have IPv6 address.")
         if peerIPV6_info["admin-c"][0] != admin:
             raise PermissionError("IP " + paramaters["peerIPV6"] + " owned by " + peerIPV6_info["admin-c"][0] + " instead of " + admin)
@@ -571,15 +585,22 @@ async def check_reg_paramater(paramaters):
         paramaters["peerIPV6"] = None
     if paramaters["hasIPV6LL"]:
         check_valid_ip_range(IPv6Network,valid_ipv6_lilos,paramaters["peerIPV6LL"],"link-local ipv6")
-        if paramaters["myIPV6LL"] == None or paramaters["myIPV6LL"] == "":
+        if paramaters["myIPV6LL"] == None:
             raise NotImplementedError("Sorry, I don't have IPv6 link-local address.")
     else:
         paramaters["peerIPV6LL"] = None
     if paramaters["MP_BGP"]:
-        if not (paramaters["hasIPV4"] and (paramaters["hasIPV6"] or paramaters["hasIPV6LL"])):
-            raise ValueError("Value Error. You need both IPv4 and IPv6 to use multiprotocol BGP .")
+        if not (paramaters["hasIPV6"] or paramaters["hasIPV6LL"]):
+            raise ValueError("Value Error. You need a IPv6 address to use multiprotocol BGP.")
+    if paramaters["Ext_Nh"]:
+        if not (paramaters["hasIPV6"] or paramaters["hasIPV6LL"]):
+            raise ValueError("Value Error. You need a IPv6 address to use extended next hop.")
+        if not paramaters["MP_BGP"]:
+            raise ValueError("Value Error. You need enable multiprotocol BGP to use extended next hop.")
+        if paramaters["allowExtNh"] == False:
+            raise NotImplementedError("Sorry, I don't support extended next hop.")
     if paramaters["hasHost"]:
-        if paramaters["peerHost"] == None and (my_paramaters["myHost"] == "" or my_paramaters["myHost"] == None):
+        if paramaters["peerHost"] == None and (my_paramaters["myHost"] == None):
             raise ValueError("Sorry, I don't have a public IP so that your endpoint can't be null.")
         if paramaters["peerHost"] == None or ":" not in paramaters["peerHost"]:
             raise ValueError("Parse Error, Host must looks like address:port .")
@@ -593,20 +614,17 @@ async def check_reg_paramater(paramaters):
     if peerKey == None or len(peerKey) == 0:
         raise ValueError('"Your WG Public Key" can\'t be null.')
     RRstate_repo.remotes.origin.pull()
-    for node_name in os.listdir("/git_sync_root"):
-        if not os.path.isdir("/git_sync_root/" + node_name):
-            continue
-        conf_dir = "/git_sync_root/" + node_name + "/" + wgconfpath + "/peerinfo"
-        if os.path.isdir(conf_dir): #Check this node hasn't peer with us before
-            for old_conf_file in os.listdir(conf_dir):
-                if old_conf_file.endswith(".yaml") and os.path.isfile(f"{conf_dir}/{old_conf_file}"):
-                    old_conf = yaml.load(open(f"{conf_dir}/{old_conf_file}").read(),Loader=yaml.SafeLoader)
-                    if paramaters["peerIPV4"] != None and old_conf["peerIPV4"] == paramaters["peerIPV4"]:
-                        raise FileExistsError(f'This IPv4 address {paramaters["peerIPV4"]} already exisis in "{node_name + "/" + old_conf_file}", please remove the peering first.')
-                    if paramaters["peerIPV6"] != None and old_conf["peerIPV6"] == paramaters["peerIPV6"]:
-                        raise FileExistsError(f'This IPv6 address {paramaters["peerIPV6"]} already exisis in "{node_name + "/" + old_conf_file}", please remove the peering first.')
-                    if old_conf["peerWG_Pub_Key"] == peerKey:
-                        raise FileExistsError(f'This wireguard public key already exisis in "{node_name + "/" + old_conf_file}", please remove the peering first.')
+    conf_dir = wgconfpath + "/peerinfo"
+    if os.path.isdir(conf_dir): #Check this node hasn't peer with us before
+        for old_conf_file in os.listdir(conf_dir):
+            if old_conf_file.endswith(".yaml") and os.path.isfile(f"{conf_dir}/{old_conf_file}"):
+                old_conf = yaml.load(open(f"{conf_dir}/{old_conf_file}").read(),Loader=yaml.SafeLoader)
+                if paramaters["peerIPV4"] != None and old_conf["peerIPV4"] == paramaters["peerIPV4"]:
+                    raise FileExistsError(f'This IPv4 address {paramaters["peerIPV4"]} already exisis in "{node_name + "/" + old_conf_file}", please remove the peering first.')
+                if paramaters["peerIPV6"] != None and old_conf["peerIPV6"] == paramaters["peerIPV6"]:
+                    raise FileExistsError(f'This IPv6 address {paramaters["peerIPV6"]} already exisis in "{node_name + "/" + old_conf_file}", please remove the peering first.')
+                #if old_conf["peerWG_Pub_Key"] == peerKey:
+                #    raise FileExistsError(f'This wireguard public key already exisis in "{node_name + "/" + old_conf_file}", please remove the peering first.')
     return paramaters
 
 def replace_str(text,replace):
@@ -624,6 +642,7 @@ def newConfig(paramaters):
     peerIPV6 = paramaters["peerIPV6"]
     peerIPV6LL = paramaters["peerIPV6LL"]
     MP_BGP = paramaters["MP_BGP"]
+    Ext_Nh = paramaters["Ext_Nh"]
     myIPV4 = paramaters["myIPV4"]
     myIPV6 = paramaters["myIPV6"]
     myIPV6LL = paramaters["myIPV6LL"]
@@ -635,7 +654,7 @@ def newConfig(paramaters):
     if peerName == None or len(peerName) == 0:
         raise ValueError('"Your Telegram ID or e-mail" can\'t be null.')
     
-    portlist = list(sorted(map(lambda x:int(x.split("-")[0]),filter(lambda x:x[-4:] == "conf", os.listdir(wgconfpath)))))
+    portlist = list(sorted(map(lambda x:int(x.split(".")[0]),filter(lambda x:x[-4:] == "yaml", os.listdir(wgconfpath + "/peerinfo")))))
     # portlist=[23001, 23002, 23003,23004,23005,23006,23007,23008,23009,23088]
     if peerID == None:
         port_range = [eval(my_config["wg_port_search_range"][0])(peerASN) , eval(my_config["wg_port_search_range"][1])(peerASN)]
@@ -659,7 +678,7 @@ def newConfig(paramaters):
     
     replace_dict = {
         "__WG_PRIVKEY__": my_config["myWG_Pri_Key"],
-        "__WG_PORT__": str(0),
+        "__WG_PORT__": str(peerID),
         "__REMOTE_PUB_KEY__": peerKey,
         "__REMOTE_CONN__": peerHost,
         "__WG_CONF_PATH__":  f"{wgconfpath}/{if_name}.conf",
@@ -672,42 +691,71 @@ def newConfig(paramaters):
     wgconf = open("templates/wg.conf").read()
     wgconf = replace_str(wgconf,replace_dict)
     
-    sv_run_sh = open("templates/sv_run.sh").read()
-    sv_run_sh = replace_str(sv_run_sh,replace_dict)
+    wgsh = textwrap.dedent(f"""\
+                                #!/bin/bash
+                                ip link add dev {if_name} type wireguard
+                                wg setconf {if_name} {wgconfpath}/{if_name}.conf
+                                ip link set {if_name} up
+                                wondershaper {if_name} $WG_SPEED_LIMIT $WG_SPEED_LIMIT || true
+                                """)
+    birdPeerV4 = None
+    birdPeerV6 = None
+    if myIPV4 != None:
+        if Ext_Nh == True:
+            wgsh += f"ip addr add {myIPV4}/32 dev {if_name}\n"
+        elif peerIPV4 != None:
+            wgsh += f"ip addr add {myIPV4} peer {peerIPV4} dev {if_name}\n"
+            if MP_BGP == False:
+                birdPeerV4 = peerIPV4
+        else:
+            wgsh += f"ip addr add {myIPV4}/32 dev {if_name}\n"
     
-    wg_if_json = open("templates/wggo-vpp_if.json").read()
-    wg_if_json = replace_str(wg_if_json,replace_dict)
+    if peerIPV6LL != None:
+        wgsh += f"ip addr add {myIPV6}/128 dev {if_name}\n"
+        wgsh += f"ip addr add {myIPV6LL}/64 dev {if_name}\n"
+        birdPeerV6 = peerIPV6LL
+    elif peerIPV6 != None:
+        wgsh += f"ip addr add {myIPV6} peer {peerIPV6} dev {if_name}\n"
+        wgsh += f"ip route add {peerIPV6}/128 src {myIPV6} dev {if_name}\n"
+        birdPeerV6 = peerIPV6
     
     birdconf = ""
-    birdPeerV4 = peerIPV4
-    birdPeerV6 = peerIPV6
-    if peerIPV6LL != None:
-        birdPeerV6 = peerIPV6LL
-    if peerIPV4 != None and MP_BGP == False:
-        birdconf += textwrap.dedent(f"""\
-                                    protocol bgp dn42_{peerName}_v4 from dnpeers {{
-                                        neighbor {birdPeerV4} as {peerASN};
-                                        ipv6 {{
+    enhfeature = ""
+    
+    if MP_BGP == True:
+        filter46 = ""
+        filter64 = ""
+        if Ext_Nh == True:
+            filter64 =               """ipv4 {
+                                            extended next hop on;
+                                        };
+                                        """
+    else:
+        filter46 =                   """ipv6 {
                                             import none;
                                             export none;
-                                        }};
+                                        };
+                                        """
+        filter64 =                   """ipv4 {
+                                            import none;
+                                            export none;
+                                        };
+                                        """
+    if birdPeerV4 != None:
+        birdconf += textwrap.dedent(f"""\
+                                    protocol bgp dn42_{peerName}_v4 from dnpeers {{
+                                        neighbor {birdPeerV4} % '{if_name}' as {peerASN};
+                                        {filter44}
+                                        {filter46}
                                     }};
                                     """)
     if peerIPV6 != None or peerIPV6LL != None:
-        if MP_BGP == True:
-            ipv4filter = ""
-        else:
-            ipv4filter =                     """ipv4 {
-                                                    import none;
-                                                    export none;
-                                                };
-                                            """
         birdconf += textwrap.dedent(f"""\
-                                            protocol bgp dn42_{peerName}_v6 from dnpeers {{
-                                                neighbor {birdPeerV6} as {peerASN};
-                                                {ipv4filter}
-                                            }};
-                                            """)
+                                    protocol bgp dn42_{peerName}_v6 from dnpeers {{
+                                        neighbor {birdPeerV6} % '{if_name}' as {peerASN};
+                                        {filter64}
+                                    }};
+                                    """)
                                     
     paramaters = { valid_key: paramaters[valid_key] for valid_key in client_valid_keys }
     paramaters["peer_signature"] = ""
@@ -717,13 +765,11 @@ def newConfig(paramaters):
     return {
         "config":{
             f"{wgconfpath}/{if_name}.conf": wgconf,
-            f"/git_sync_self/ow/etc/service/wg_{if_name}/run": sv_run_sh,
-                             f"/etc/service/wg_{if_name}/run": sv_run_sh,
-            f"/git_sync_self/etc/wggo-vpp_template/if/{if_name}.json": wg_if_json,
+            f"{wgconfpath}/{if_name}.sh": wgsh,
             f"{wgconfpath}/peerinfo/{peerID}.yaml": yaml.dump(paramaters),
             f"{bdconfpath}/{if_name}.conf": birdconf
         },
-        "name": f"wg_{if_name}",
+        "if_name": if_name,
         "paramaters": paramaters,
     }
 
@@ -744,13 +790,14 @@ def saveConfig(new_config):
     RRstate_repo.git.add(all=True)
     RRstate_repo.index.commit(f'{node_name} peer add')
     RRstate_repo.remotes.origin.push()
-    print_and_exec("sv start " + shlex.quote(new_config["name"]))
+    if_name = new_config["if_name"]
+    print_and_exec(f"{wgconfpath}/{if_name}.sh")
     print_and_exec("birdc configure")
     return None
 
 def print_and_exec(command):
     print(command)
-    os.system(command)
+    os.system(f'echo {shlex.quote(command)} | nc -q 1 127.0.0.1 2226')
                                     
 def print_and_rm(file):
     print("rm " + file)
@@ -763,16 +810,14 @@ def print_and_rmrf(tree):
 def deleteConfig(peerID,peerName):
     if_name = "dn42-" + peerName
     RRstate_repo.remotes.origin.pull()
-    print_and_exec(f"sv stop wg_{if_name}")
     print_and_rm(f"{wgconfpath}/{if_name}.conf")
-    print_and_rmrf(f"/git_sync_self/ow/etc/service/wg_{if_name}")
-    print_and_rmrf(                 f"/etc/service/wg_{if_name}") 
-    print_and_rm(f"/git_sync_self/etc/wggo-vpp_template/if/{if_name}.json")  
+    print_and_rm(f"{wgconfpath}/{if_name}.sh")
     print_and_rm(f"{wgconfpath}/peerinfo/{peerID}.yaml")
     print_and_rm(f"{bdconfpath}/{if_name}.conf")
     RRstate_repo.git.add(all=True)
     RRstate_repo.index.commit(f'{node_name} peer del')
     RRstate_repo.remotes.origin.push()
+    print_and_exec(f"ip link del {if_name}")
     print_and_exec("birdc configure")
     return None
 
@@ -797,6 +842,7 @@ async def action(paramaters):
     paramaters["hasIPV6LL"]        = get_key_default(paramaters,"hasIPV6LL",False)
     paramaters["peerIPV6LL"]       = get_key_default(paramaters,"peerIPV6LL",None)
     paramaters["MP_BGP"]           = get_key_default(paramaters,"MP_BGP",False)
+    paramaters["Ext_Nh"]           = get_key_default(paramaters,"Ext_Nh",False)
     paramaters["hasHost"]          = get_key_default(paramaters,"hasHost",False)
     paramaters["peerHost"]         = get_key_default(paramaters,"peerHost",None)
     paramaters["peerWG_Pub_Key"]   = get_key_default(paramaters,"peerWG_Pub_Key","")
@@ -806,6 +852,7 @@ async def action(paramaters):
     paramaters["hasIPV6"] = True if (paramaters["hasIPV6"] == "on" or paramaters["hasIPV6"] == "True") else False
     paramaters["hasIPV6LL"] = True if (paramaters["hasIPV6LL"] == "on" or paramaters["hasIPV6LL"] == "True") else False
     paramaters["MP_BGP"] = True if (paramaters["MP_BGP"] == "on" or paramaters["MP_BGP"] == "True") else False
+    paramaters["Ext_Nh"] = True if (paramaters["Ext_Nh"] == "on" or paramaters["Ext_Nh"] == "True") else False
     paramaters["hasHost"] = True if (paramaters["hasHost"] == "on" or paramaters["hasHost"] == "True") else False
     action = paramaters["action"]
     paramaters = { valid_key: paramaters[valid_key] for valid_key in client_valid_keys }
@@ -825,6 +872,7 @@ async def action(paramaters):
                 paramaters["hasIPV6"] = True 
                 paramaters["hasIPV6LL"] = True
                 paramaters["MP_BGP"] = False
+                paramaters["Ext_Nh"] = False
                 paramaters["hasHost"] = True
             return 200, get_html(paramaters,peerSuccess=False)
         if action == "Check My Info":
@@ -870,7 +918,7 @@ async def action(paramaters):
             paramaters = new_config["paramaters"]
             saveConfig(new_config)
             paramaters = {**paramaters, **my_paramaters}
-            if paramaters["myHost"] == "" or paramaters["myHost"] == None:
+            if paramaters["myHost"] == None:
                 myHostDisplay = paramaters["myHostDisplay"]
             else:
                 myHostDisplay = myHost + ":" + str(paramaters["PeerID"])
@@ -892,7 +940,7 @@ async def action(paramaters):
             title = "404 - File or directory not found."
             errorcode = 404
             e = "The resource you are looking for might have been removed, had its name changed, or is temporarily unavailable.\n    " + str(e.filename)
-        #return errcode, get_err_page(paramaters,title,traceback.format_exc())
+        return errcode, get_err_page(paramaters,title,traceback.format_exc())
         return errcode, get_err_page(paramaters,title,e)
 
 ipv4s = [ipaddress.ip_network(n) for n in requests.get("https://www.cloudflare.com/ips-v4").text.split("\n")]

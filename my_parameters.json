@@ -6,5 +6,6 @@
     "myHostDisplay": "",
     "myASN": "AS4242420000",
     "myContact": "",
-    "myWG_Pub_Key": ""
+    "myWG_Pub_Key": "",
+    "allowExtNh": true
 }
