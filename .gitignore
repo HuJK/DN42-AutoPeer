@@ -1,6 +1,8 @@
 dn42data/*
 __pycache__/*
 dn42data/*
+dn42data
 whoisdata/*
+whoisdata
 my_config.json
 my_parameters.json

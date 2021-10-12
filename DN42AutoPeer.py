@@ -84,6 +84,9 @@ else:
 
 wgconfpath = my_config["wgconfpath"]
 bdconfpath = my_config["bdconfpath"]
+
+pathlib.Path(wgconfpath + "/peerinfo").mkdir(parents=True, exist_ok=True)
+
 client_valid_keys = ["peer_plaintext","peer_pub_key_pgp","peer_signature", "peerASN", "hasIPV4", "peerIPV4", "hasIPV6", "peerIPV6", "hasIPV6LL", "peerIPV6LL","MP_BGP","Ext_Nh", "hasHost", "peerHost", "peerWG_Pub_Key", "peerContact", "PeerID"]
 dn42repo_base = my_config["dn42repo_base"]
 DN42_valid_ipv4s = my_config["DN42_valid_ipv4s"]
@@ -940,7 +943,7 @@ async def action(paramaters):
             title = "404 - File or directory not found."
             errorcode = 404
             e = "The resource you are looking for might have been removed, had its name changed, or is temporarily unavailable.\n    " + str(e.filename)
-        return errcode, get_err_page(paramaters,title,traceback.format_exc())
+        #return errcode, get_err_page(paramaters,title,traceback.format_exc())
         return errcode, get_err_page(paramaters,title,e)
 
 ipv4s = [ipaddress.ip_network(n) for n in requests.get("https://www.cloudflare.com/ips-v4").text.split("\n")]
