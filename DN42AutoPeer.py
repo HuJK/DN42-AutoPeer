@@ -456,6 +456,12 @@ def verify_signature_ssh_ed25519(plaintext,pub_key,raw_signature):
     else:
         raise ValueError(stdout_data)
 
+def removern(strin):
+    if type(strin) == str:
+        return strin.replace("\r\n","\n").replace("\r","\n")
+    elif type(strin) == bytes:
+        return strin.replace(b"\r\n",b"\n").replace(b"\r",b"\n")
+    return strin
 def verify_signature(plaintext,pub_key,pub_key_pgp,raw_signature,method):
     if method=="pgp-fingerprint":
         return verify_signature_pgp(plaintext,pub_key,pub_key_pgp,raw_signature)
@@ -469,6 +475,9 @@ def verify_signature(plaintext,pub_key,pub_key_pgp,raw_signature,method):
 
 async def verify_user_signature(peerASN,plaintext,pub_key_pgp,raw_signature):
     try:
+        plaintext = removern(plaintext)
+        pub_key_pgp = removern(pub_key_pgp)
+        raw_signature = removern(raw_signature)
         if plaintext == "" or plaintext == None:
             raise ValueError('Plain text to sign can\'t be null, please click the button "Get Signature" first.')
         raw_signature = raw_signature.replace("\r\n","\n")
