@@ -803,13 +803,17 @@ def saveConfig(new_config):
     RRstate_repo.index.commit(f'{node_name} peer add')
     RRstate_repo.remotes.origin.push()
     if_name = new_config["if_name"]
-    print_and_exec(f"{wgconfpath}/{if_name}.sh")
+    print_and_exec_uml(f"{wgconfpath}/{if_name}.sh")
     print_and_exec("birdc configure")
     return None
 
-def print_and_exec(command):
+def print_and_exec_uml(command):
     print(command)
     os.system(f'echo {shlex.quote(command)} | nc -q 1 127.0.0.1 2226')
+
+def print_and_exec(command):
+    print(command)
+    os.system(command)
                                     
 def print_and_rm(file):
     print("rm " + file)
@@ -829,7 +833,7 @@ def deleteConfig(peerID,peerName):
     RRstate_repo.git.add(all=True)
     RRstate_repo.index.commit(f'{node_name} peer del')
     RRstate_repo.remotes.origin.push()
-    print_and_exec(f"ip link del {if_name}")
+    print_and_exec_uml(f"ip link del {if_name}")
     print_and_exec("birdc configure")
     return None
 
