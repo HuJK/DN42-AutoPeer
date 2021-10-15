@@ -47,6 +47,7 @@ rewrite "^/([0-9]+)\.([0-9]+)\.([0-9]+)\.([0-9]+)$" /inetnum/$1.$2.$3.$4_32 last
 rewrite "^/([0-9a-fA-F:]+)/([0-9]+)$" /inet6num/$1_$2 last;
 rewrite "^/([0-9a-fA-F:]+)$" /inet6num/$1_128 last;
 rewrite "^/([^/]+)-([Dd][Nn]42)$" /person/$1-DN42 last;
+rewrite "^/([^/]+)-([Nn][Ee][Oo][Nn][Ee][Tt][Ww][Oo][Rr][Kk])$" /person/$1-NEONETWORK last;
 rewrite "^/([^/]+)-([Mm][Nn][Tt])$" /mntner/$1-MNT last;
 rewrite "^/([^/]+)-([Ss][Cc][Hh][Ee][Mm][Aa])$" /schema/$1-SCHEMA last;
 rewrite "^/([Oo][Rr][Gg])-(.+)$" /organisation/ORG-$2 last;
