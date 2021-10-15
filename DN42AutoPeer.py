@@ -319,7 +319,7 @@ def get_html(paramaters,peerSuccess=False):
    <tr><td><input type="checkbox" name="MP_BGP" {"checked" if MP_BGP else ""} {MP_BGP_Disabled} >Multiprotocol BGP</td><td></td></tr>
    <tr><td><input type="checkbox" name="Ext_Nh" {"checked" if Ext_Nh else ""} {Ext_Nh_Disabled} >Extended next hop</td><td></td></tr>
    <tr><td>Connectrion Info: </td><td>  </td></tr>
-   <tr><td><input type="checkbox" name="hasHost" {"checked" if hasHost else ""} {hasHost_Readonly}>Your Clearnet Host</td><td><input type="text" value="{peerHost if peerHost != None else ""}" name="peerHost" /></td></tr>
+   <tr><td><input type="checkbox" name="hasHost" {"checked" if hasHost else ""} {hasHost_Readonly}>Your Clearnet Endpoint (domain or ip:port)</td><td><input type="text" value="{peerHost if peerHost != None else ""}" name="peerHost" /></td></tr>
    <tr><td>Your WG Public Key</td><td><input type="text" value="{peerWG_Pub_Key}" name="peerWG_Pub_Key" /></td></tr>
    <tr><td>Your Telegram ID or e-mail</td><td><input type="text" value="{peerContact}" name="peerContact" /></td></tr>
    <tr><td><input type="submit" name="action" value="Register" /></td><td>Register a new peer to get Peer ID</td></tr>
@@ -338,7 +338,7 @@ def get_html(paramaters,peerSuccess=False):
    <tr><td>DN42 IPv6</td><td><input type="text" value="{myIPV6}" readonly /></td></tr>
    <tr><td>IPv6 Link local</td><td><input type="text" value="{myIPV6LL}" readonly /></td></tr>
    <tr><td>Connectrion Info: </td><td>  </td></tr>
-   <tr><td>My Clearnet Host</td><td><input type="text" value="{myHostDisplay}" readonly /></td></tr>
+   <tr><td>My Clearnet Endpoint</td><td><input type="text" value="{myHostDisplay}" readonly /></td></tr>
    <tr><td>My WG Public Key</td><td><input type="text" value="{myWG_Pub_Key}" readonly /></td></tr>
    <tr><td>My Contact</td><td><input type="text" value="{myContact}" readonly /></td></tr>
  </table>
@@ -516,13 +516,15 @@ async def verify_user_signature(peerASN,plaintext,pub_key_pgp,raw_signature):
         customError.__name__ = "SignatureError: " + type(e).__name__
         raise customError(str(e))
 
-def get_err_page(paramaters,title,error,big_title="Server Error"):
+def get_err_page(paramaters,title,error,big_title="Server Error", tab_title = None):
+    if tab_title == None:
+        tab_title = title
     retstr =  f"""
 <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
 <html xmlns="http://www.w3.org/1999/xhtml">
 <head>
 <meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1"/>
-<title>404 - File or directory not found.</title>
+<title>{ tab_title }</title>
 <style type="text/css">
 <!--
 body{{margin:0;font-size:.7em;font-family:Verdana, Arial, Helvetica, sans-serif;background:#EEEEEE;}}
@@ -541,7 +543,7 @@ background-color:#555555;}}
 <div id="header"><h1>{big_title}</h1></div>
 <div id="content">
  <div class="content-container"><fieldset>
-  <h2>{ title}</h2>
+  <h2>{ title }</h2>
   <h3>{str(error).replace(chr(10),"<br>").replace(" ","&nbsp;")}</h3>
   <h3></h3>
   <form action="action_page.php" method="post">\n"""
@@ -947,7 +949,7 @@ async def action(paramaters):
                 "My WG Public Key":paramaters["myWG_Pub_Key"],
                 "My Contact":  paramaters["myContact"]
             }
-            return 200, get_err_page(paramaters, f'Your PeerID is: { paramaters["PeerID"] }<br>My info:',yaml.dump(myInfo, sort_keys=False),big_title="Peer Success!")
+            return 200, get_err_page(paramaters, f'Your PeerID is: { paramaters["PeerID"] }<br>My info:',yaml.dump(myInfo, sort_keys=False),big_title="Peer Success!", tab_title = "Success!")
         return 400, get_err_page(paramaters,"400 - Bad Request",ValueError("Unknow action" + str(action)))
     except Exception as e:
         title = type(e).__name__
