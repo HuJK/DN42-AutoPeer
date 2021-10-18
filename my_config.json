@@ -8,6 +8,7 @@
     "urlprefix": "",
     "wgconfpath": "/etc/dn42ap",
     "bdconfpath": "/etc/bird/peers",
+    "gitsyncpath": null,
     "dn42_whois_server": [
         "git",
         "https://github.com/KusakabeSi/dn42-registry"

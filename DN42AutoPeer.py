@@ -34,6 +34,7 @@ from ipaddress import IPv6Network
 from subprocess import Popen, PIPE, STDOUT
 from tornado.httpclient import HTTPClientError
 import DN42whois 
+from DN42GIT import DN42GIT 
 
 print("Starting...")
 os.environ['GIT_SSH_COMMAND'] = "ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no"
@@ -43,44 +44,53 @@ my_config = json.loads(open("my_config.json").read())
 
 if my_config["jwt_secret"] == None:
     my_config["jwt_secret"] = ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(32))
-    open("my_config.json","w").write(json.dumps(my_config,indent=4,ensure_ascii=False))
+    # open("my_config.json","w").write(json.dumps(my_config,indent=4,ensure_ascii=False))
 jwt_secret = my_config["jwt_secret"]
 
-RRstate_repo = Repo("/git_sync_root")
+def try_read_env(params,pkey,ekey):
+    if ekey in os.environ:
+        params[pkey] = os.environ[ekey]
 
-my_paramaters["myIPV4"] = os.environ['DN42_IPV4']
-my_paramaters["myIPV6"] = os.environ['DN42_IPV6']
-my_paramaters["myIPV6LL"] = os.environ['DN42_IPV6_LL']
-my_paramaters["myHostDisplay"] = os.environ['DN42AP_HOST_DISPLAY']
-my_paramaters["myASN"] = "AS" + os.environ['DN42_E_AS']
-my_paramaters["myContact"] = os.environ['DN42_CONTACT']
-my_paramaters["myWG_Pub_Key"] = os.environ['WG_PUBKEY']
+try_read_env(my_paramaters,"myIPV4",'DN42_IPV4')
+try_read_env(my_paramaters,"myIPV6",'DN42_IPV6')
+try_read_env(my_paramaters,"myIPV6LL",'DN42_IPV6_LL')
+try_read_env(my_paramaters,"myHostDisplay",'DN42AP_HOST_DISPLAY')
+try_read_env(my_paramaters,"myASN",'DN42_E_AS')
+try_read_env(my_paramaters,"myContact",'DN42_CONTACT')
+try_read_env(my_paramaters,"myWG_Pub_Key",'WG_PUBKEY')
+try_read_env(my_config,"html_title",'DN42AP_TITLE')
+try_read_env(my_config,"listen_port",'DN42AP_PORT')
+try_read_env(my_config,"myWG_Pri_Key",'WG_PRIVKEY')
+try_read_env(my_config,"wgconfpath",'DN42AP_WGCONFPATH')
+try_read_env(my_config,"bdconfpath",'DN42AP_BIRDCONFPATH')
+try_read_env(my_config,"admin_mnt",'DN42AP_ADMIN')
+try_read_env(my_config,"urlprefix",'DN42AP_URLPREFIX')
+try_read_env(my_config,"gitsyncpath",'DN42AP_GIT_SYNC_PATH')
+
+RRstate_repo = DN42GIT(my_config["gitsyncpath"])
+
+use_uml_command_for_rootless_router=False
+if "UML" in os.environ and os.environ['UML'] == "1":
+    use_uml_command_for_rootless_router=True
 
 def es2none(p):
     if p == "":
         return None
     return p
+
 my_paramaters["myIPV4"] = es2none(my_paramaters["myIPV4"])
 my_paramaters["myIPV6"] = es2none(my_paramaters["myIPV6"])
 my_paramaters["myIPV6LL"] = es2none(my_paramaters["myIPV6LL"])
 my_paramaters["myHost"] = es2none(my_paramaters["myHost"])
+my_paramaters["myASN"] = my_paramaters["myASN"] if my_paramaters["myASN"].startswith("AS") else "AS" + my_paramaters["myASN"]
 
-my_config["html_title"] = os.environ['DN42AP_TITLE']
-my_config["listen_port"] = os.environ['DN42AP_PORT']
-my_config["myWG_Pri_Key"] = os.environ['WG_PRIVKEY']
-my_config["wgconfpath"] = "/etc/dn42ap"
-my_config["bdconfpath"] = "/etc/bird/peers"
-my_config["admin_mnt"] = os.environ['DN42AP_ADMIN']
-my_config["urlprefix"] = os.environ['DN42AP_URLPREFIX']
 
-node_name = os.environ['NODE_NAME']
+node_name = ""
+try:
+    node_name = os.environ['NODE_NAME']
+except Exception as e:
+    pass
 
-"""
-if my_config["jwt_secret"] == None:
-    jwt_secret=  ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(32))
-else:
-    jwt_secret = my_config["jwt_secret"]
-"""
 
 wgconfpath = my_config["wgconfpath"]
 bdconfpath = my_config["bdconfpath"]
@@ -627,18 +637,18 @@ async def check_reg_paramater(paramaters):
     peerKey = paramaters["peerWG_Pub_Key"]
     if peerKey == None or len(peerKey) == 0:
         raise ValueError('"Your WG Public Key" can\'t be null.')
-    RRstate_repo.remotes.origin.pull()
+    RRstate_repo.pull()
     conf_dir = wgconfpath + "/peerinfo"
     if os.path.isdir(conf_dir): #Check this node hasn't peer with us before
         for old_conf_file in os.listdir(conf_dir):
             if old_conf_file.endswith(".yaml") and os.path.isfile(f"{conf_dir}/{old_conf_file}"):
                 old_conf = yaml.load(open(f"{conf_dir}/{old_conf_file}").read(),Loader=yaml.SafeLoader)
                 if paramaters["peerIPV4"] != None and old_conf["peerIPV4"] == paramaters["peerIPV4"]:
-                    raise FileExistsError(f'This IPv4 address {paramaters["peerIPV4"]} already exisis in "{node_name + "/" + old_conf_file}", please remove the peering first.')
+                    raise FileExistsError(f'This IPv4 address {paramaters["peerIPV4"]} already exisis in "{old_conf_file}", please remove the peering first.')
                 if paramaters["peerIPV6"] != None and old_conf["peerIPV6"] == paramaters["peerIPV6"]:
-                    raise FileExistsError(f'This IPv6 address {paramaters["peerIPV6"]} already exisis in "{node_name + "/" + old_conf_file}", please remove the peering first.')
-                #if old_conf["peerWG_Pub_Key"] == peerKey:
-                #    raise FileExistsError(f'This wireguard public key already exisis in "{node_name + "/" + old_conf_file}", please remove the peering first.')
+                    raise FileExistsError(f'This IPv6 address {paramaters["peerIPV6"]} already exisis in "{old_conf_file}", please remove the peering first.')
+                if old_conf["peerHost"] != None and old_conf["peerHost"] == paramaters["peerHost"]:
+                    raise FileExistsError(f'This endpoint "{paramaters["peerHost"]}" already exisis in "{old_conf_file}", please remove the peering first.')
     return paramaters
 
 def replace_str(text,replace):
@@ -646,7 +656,7 @@ def replace_str(text,replace):
         text = text.replace(k,v)
     return text
 
-def newConfig(paramaters):
+def newConfig(paramaters,overwrite=False):
     peerASN = paramaters["peerASN"][2:]
     peerKey = paramaters["peerWG_Pub_Key"]
     peerName = paramaters["peerContact"]
@@ -680,7 +690,7 @@ def newConfig(paramaters):
         peerID = int(peerID)
     if peerID == None:
         raise IndexError("PeerID not available, contact my to peer manually. ")
-    if peerID in portlist:
+    if peerID in portlist and overwrite == False:
         raise IndexError("PeerID already exists.")
     paramaters["PeerID"] = peerID
     peerName = str(int(peerID) % 10000).zfill(4) + peerName
@@ -788,7 +798,7 @@ def newConfig(paramaters):
     }
 
 def saveConfig(new_config):
-    RRstate_repo.remotes.origin.pull()
+    RRstate_repo.pull()
     for path,content in new_config["config"].items():
         print("================================")
         print(path)
@@ -801,17 +811,17 @@ def saveConfig(new_config):
             if content.startswith("#!"):
                 os.chmod(path, 0o755)
         print("================================")
-    RRstate_repo.git.add(all=True)
-    RRstate_repo.index.commit(f'{node_name} peer add')
-    RRstate_repo.remotes.origin.push()
     if_name = new_config["if_name"]
+    RRstate_repo.push(f'{node_name} peer add {if_name}')
     print_and_exec_uml(f"{wgconfpath}/{if_name}.sh")
     print_and_exec("birdc configure")
     return None
 
 def print_and_exec_uml(command):
+    if use_uml_command_for_rootless_router == True:
+        command = f'echo {shlex.quote(command + "; exit")} | nc 127.0.0.1 2226'
     print(command)
-    os.system(f'echo {shlex.quote(command)} | nc -q 1 127.0.0.1 2226')
+    os.system(command)
 
 def print_and_exec(command):
     print(command)
@@ -827,14 +837,12 @@ def print_and_rmrf(tree):
                                     
 def deleteConfig(peerID,peerName):
     if_name = "dn42-" + peerName
-    RRstate_repo.remotes.origin.pull()
+    RRstate_repo.pull()
     print_and_rm(f"{wgconfpath}/{if_name}.conf")
     print_and_rm(f"{wgconfpath}/{if_name}.sh")
     print_and_rm(f"{wgconfpath}/peerinfo/{peerID}.yaml")
     print_and_rm(f"{bdconfpath}/{if_name}.conf")
-    RRstate_repo.git.add(all=True)
-    RRstate_repo.index.commit(f'{node_name} peer del')
-    RRstate_repo.remotes.origin.push()
+    RRstate_repo.push(f'{node_name} peer del {if_name}')
     print_and_exec_uml(f"ip link del {if_name}")
     print_and_exec("birdc configure")
     return None
@@ -847,7 +855,7 @@ def get_key_default(D,k,d):
 def qsd2d(qsd):
     return {k:v[0] for k,v in qsd.items()}
 
-async def action(paramaters):
+def get_paramaters(paramaters):
     paramaters["action"]           = get_key_default(paramaters,"action","OK")
     paramaters["peer_plaintext"]   = get_key_default(paramaters,"peer_plaintext","")
     paramaters["peer_pub_key_pgp"] = get_key_default(paramaters,"peer_pub_key_pgp","")
@@ -859,7 +867,7 @@ async def action(paramaters):
     paramaters["peerIPV6"]         = get_key_default(paramaters,"peerIPV6",None)
     paramaters["hasIPV6LL"]        = get_key_default(paramaters,"hasIPV6LL",False)
     paramaters["peerIPV6LL"]       = get_key_default(paramaters,"peerIPV6LL",None)
-    paramaters["MP_BGP"]           = get_key_default(paramaters,"MP_BGP",False)
+    paramaters["MP_BGP"]           = get_key_default(paramaters,"MP_BGP",True)
     paramaters["Ext_Nh"]           = get_key_default(paramaters,"Ext_Nh",False)
     paramaters["hasHost"]          = get_key_default(paramaters,"hasHost",False)
     paramaters["peerHost"]         = get_key_default(paramaters,"peerHost",None)
@@ -872,16 +880,20 @@ async def action(paramaters):
     paramaters["MP_BGP"] = True if (paramaters["MP_BGP"] == "on" or paramaters["MP_BGP"] == "True") else False
     paramaters["Ext_Nh"] = True if (paramaters["Ext_Nh"] == "on" or paramaters["Ext_Nh"] == "True") else False
     paramaters["hasHost"] = True if (paramaters["hasHost"] == "on" or paramaters["hasHost"] == "True") else False
-    action = paramaters["action"]
     paramaters = { valid_key: paramaters[valid_key] for valid_key in client_valid_keys }
     paramaters = {**paramaters, **my_paramaters} 
+    return paramaters
+    
+async def action(paramaters):
+    paramaters = get_paramaters(paramaters)
+    action = paramaters["action"]
     try:
         try:
             if paramaters["PeerID"] != None:
                 if int(paramaters["PeerID"]) < 0 or int(paramaters["PeerID"]) > 65535:
                     raise ValueError("Invalid PeerID")
         except Exception as e:
-            filename = node_name + "/" + paramaters["PeerID"] + ".yaml"
+            filename = paramaters["PeerID"] + ".yaml"
             paramaters["PeerID"] = None
             raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), filename)
         if action=="OK":
@@ -889,7 +901,7 @@ async def action(paramaters):
                 paramaters["hasIPV4"] = True 
                 paramaters["hasIPV6"] = True 
                 paramaters["hasIPV6LL"] = True
-                paramaters["MP_BGP"] = False
+                paramaters["MP_BGP"] = True
                 paramaters["Ext_Nh"] = False
                 paramaters["hasHost"] = True
             return 200, get_html(paramaters,peerSuccess=False)
@@ -899,7 +911,7 @@ async def action(paramaters):
             try:
                 peerInfo = yaml.load(open(wgconfpath + "/peerinfo/" + paramaters["PeerID"] + ".yaml").read(),Loader=yaml.SafeLoader)
             except FileNotFoundError as e:
-                e.filename = node_name + "/" + paramaters["PeerID"] + ".yaml"
+                e.filename = paramaters["PeerID"] + ".yaml"
                 raise e
             peerInfo = { valid_key: peerInfo[valid_key] for valid_key in client_valid_keys if valid_key in peerInfo }
             paramaters = {**paramaters,**peerInfo, **my_paramaters}
@@ -918,7 +930,7 @@ async def action(paramaters):
             try:
                 peerInfo = yaml.load(open(wgconfpath + "/peerinfo/" + paramaters["PeerID"] + ".yaml").read(),Loader=yaml.SafeLoader)
             except FileNotFoundError as e:
-                e.filename =  node_name + "/" + paramaters["PeerID"] + ".yaml"
+                e.filename = paramaters["PeerID"] + ".yaml"
                 raise e
             if peerInfo["peerASN"] != paramaters["peerASN"]:
                 raise PermissionError("Peer ASN not match")
