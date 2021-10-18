@@ -43,7 +43,7 @@ for old_conf_file in os.listdir(conf_dir):
     if old_conf_file.endswith(".yaml") and os.path.isfile(f"{conf_dir}/{old_conf_file}"):
         old_conf = yaml.load(open(f"{conf_dir}/{old_conf_file}").read(),Loader=yaml.SafeLoader)
         paramaters = {}
-        paramaters = DN42AutoPeer.get_paramaters(paramaters)
+        action , paramaters = DN42AutoPeer.get_paramaters(paramaters)
         paramaters = {**paramaters,**old_conf} 
         new_config = DN42AutoPeer.newConfig(paramaters,overwrite=True)
         saveConfig(new_config)

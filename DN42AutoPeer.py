@@ -856,7 +856,7 @@ def qsd2d(qsd):
     return {k:v[0] for k,v in qsd.items()}
 
 def get_paramaters(paramaters):
-    paramaters["action"]           = get_key_default(paramaters,"action","OK")
+    action                         = get_key_default(paramaters,"action","OK")
     paramaters["peer_plaintext"]   = get_key_default(paramaters,"peer_plaintext","")
     paramaters["peer_pub_key_pgp"] = get_key_default(paramaters,"peer_pub_key_pgp","")
     paramaters["peer_signature"]   = get_key_default(paramaters,"peer_signature","")
@@ -882,11 +882,10 @@ def get_paramaters(paramaters):
     paramaters["hasHost"] = True if (paramaters["hasHost"] == "on" or paramaters["hasHost"] == "True") else False
     paramaters = { valid_key: paramaters[valid_key] for valid_key in client_valid_keys }
     paramaters = {**paramaters, **my_paramaters} 
-    return paramaters
+    return action , paramaters
     
 async def action(paramaters):
-    paramaters = get_paramaters(paramaters)
-    action = paramaters["action"]
+    action , paramaters = get_paramaters(paramaters)
     try:
         try:
             if paramaters["PeerID"] != None:
