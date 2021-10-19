@@ -772,7 +772,6 @@ def newConfig(paramaters,overwrite=False):
         birdconf += textwrap.dedent(f"""\
                                     protocol bgp dn42_{peerName}_v4 from dnpeers {{
                                         neighbor {birdPeerV4} % '{if_name}' as {peerASN};
-                                        {filter44}
                                         {filter46}
                                     }};
                                     """)
