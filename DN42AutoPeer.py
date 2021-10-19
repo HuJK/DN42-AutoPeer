@@ -97,7 +97,7 @@ bdconfpath = my_config["bdconfpath"]
 
 pathlib.Path(wgconfpath + "/peerinfo").mkdir(parents=True, exist_ok=True)
 
-client_valid_keys = ["peer_plaintext","peer_pub_key_pgp","peer_signature", "peerASN", "hasIPV4", "peerIPV4", "hasIPV6", "peerIPV6", "hasIPV6LL", "peerIPV6LL","MP_BGP","Ext_Nh", "hasHost", "peerHost", "peerWG_Pub_Key", "peerContact", "PeerID"]
+client_valid_keys = ["peer_plaintext","peer_pub_key_pgp","peer_signature", "peerASN", "hasIPV4", "peerIPV4", "hasIPV6", "peerIPV6", "hasIPV6LL", "peerIPV6LL","MP_BGP","Ext_Nh", "hasHost", "peerHost", "peerWG_Pub_Key","peerWG_PS_Key", "peerContact", "PeerID"]
 dn42repo_base = my_config["dn42repo_base"]
 DN42_valid_ipv4s = my_config["DN42_valid_ipv4s"]
 DN42_valid_ipv6s = my_config["DN42_valid_ipv6s"]
@@ -245,6 +245,7 @@ def get_html(paramaters,peerSuccess=False):
     hasHost_Readonly = ""
     peerHost = paramaters["peerHost"]
     peerWG_Pub_Key = paramaters["peerWG_Pub_Key"]
+    peerWG_PS_Key = paramaters["peerWG_PS_Key"]
     peerContact = paramaters["peerContact"]
     PeerID = paramaters["PeerID"]
     myASN = paramaters["myASN"]
@@ -330,7 +331,8 @@ def get_html(paramaters,peerSuccess=False):
    <tr><td><input type="checkbox" name="Ext_Nh" {"checked" if Ext_Nh else ""} {Ext_Nh_Disabled} >Extended next hop</td><td></td></tr>
    <tr><td>Connectrion Info: </td><td>  </td></tr>
    <tr><td><input type="checkbox" name="hasHost" {"checked" if hasHost else ""} {hasHost_Readonly}>Your Clearnet Endpoint (domain or ip:port)</td><td><input type="text" value="{peerHost if peerHost != None else ""}" name="peerHost" /></td></tr>
-   <tr><td>Your WG Public Key</td><td><input type="text" value="{peerWG_Pub_Key}" name="peerWG_Pub_Key" /></td></tr>
+   <tr><td>Your Wireguard Public Key</td><td><input type="text" value="{peerWG_Pub_Key}" name="peerWG_Pub_Key" /></td></tr>
+   <tr><td>Your Wireguard Pre-Shared Key (Optional)</td><td><input type="text" value="{peerWG_PS_Key}" name="peerWG_PS_Key" /></td></tr>
    <tr><td>Your Telegram ID or e-mail</td><td><input type="text" value="{peerContact}" name="peerContact" /></td></tr>
    <tr><td><input type="submit" name="action" value="Register" /></td><td>Register a new peer to get Peer ID</td></tr>
    </table>
@@ -633,6 +635,8 @@ async def check_reg_paramater(paramaters):
         addrinfo = socket.getaddrinfo(hostaddr,port)
     else:
         paramaters["peerHost"] = None
+    if paramaters["peerWG_PS_Key"] == "":
+        paramaters["peerWG_PS_Key"] == None
     
     peerKey = paramaters["peerWG_Pub_Key"]
     if peerKey == None or len(peerKey) == 0:
@@ -659,6 +663,7 @@ def replace_str(text,replace):
 def newConfig(paramaters,overwrite=False):
     peerASN = paramaters["peerASN"][2:]
     peerKey = paramaters["peerWG_Pub_Key"]
+    peerPSK = paramaters["peerWG_PS_Key"]
     peerName = paramaters["peerContact"]
     peerID = paramaters["PeerID"]
     peerHost = paramaters["peerHost"]
@@ -700,20 +705,18 @@ def newConfig(paramaters,overwrite=False):
     
     if_name = "dn42-" + peerName
     
-    replace_dict = {
-        "__WG_PRIVKEY__": my_config["myWG_Pri_Key"],
-        "__WG_PORT__": str(peerID),
-        "__REMOTE_PUB_KEY__": peerKey,
-        "__REMOTE_CONN__": peerHost,
-        "__WG_CONF_PATH__":  f"{wgconfpath}/{if_name}.conf",
-        "__WG_NAME__": if_name,
-        "__PEER_ID__": str(peerID),
-        "__REMOTE_IPV4__": peerIPV4 + "/32" if peerIPV4 != None else "",
-        "__REMOTE_IPV6__": peerIPV6 + "/128" if peerIPV6 != None else "",
-        "__REMOTE_IPV6_LL__": peerIPV6LL + "/128" if peerIPV6LL != None else ""
-    }
-    wgconf = open("templates/wg.conf").read()
-    wgconf = replace_str(wgconf,replace_dict)
+    wgconf = textwrap.dedent(f"""\
+                                [Interface]
+                                PrivateKey = { privkey }
+                                ListenPort = { str(peerID) }
+                                [Peer]
+                                PublicKey = { peerKey }
+                                AllowedIPs = 10.0.0.0/8, 172.20.0.0/14, 172.31.0.0/16, fd00::/8, fe80::/64
+                                """)
+    if peerHost != None:
+        wgconf += f"Endpoint = { peerHost }\n"
+    if peerPSK != None:
+        wgconf += f"PresharedKey = { peerPSK }\n"
     
     wgsh = textwrap.dedent(f"""\
                                 #!/bin/bash
@@ -872,6 +875,7 @@ def get_paramaters(paramaters):
     paramaters["hasHost"]          = get_key_default(paramaters,"hasHost",False)
     paramaters["peerHost"]         = get_key_default(paramaters,"peerHost",None)
     paramaters["peerWG_Pub_Key"]   = get_key_default(paramaters,"peerWG_Pub_Key","")
+    paramaters["peerWG_PS_Key"]   = get_key_default(paramaters,"peerWG_PS_Key","")
     paramaters["peerContact"]      = get_key_default(paramaters,"peerContact","")
     paramaters["PeerID"]           = get_key_default(paramaters,"PeerID",None)
     paramaters["hasIPV4"] = True if (paramaters["hasIPV4"] == "on" or paramaters["hasIPV4"] == "True")  else False
