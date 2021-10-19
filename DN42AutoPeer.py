@@ -51,6 +51,10 @@ def try_read_env(params,pkey,ekey):
     if ekey in os.environ:
         params[pkey] = os.environ[ekey]
 
+use_speed_linit = False
+if "WG_SPEED_LIMIT" in os.environ:
+    use_speed_linit = True
+
 try_read_env(my_paramaters,"myIPV4",'DN42_IPV4')
 try_read_env(my_paramaters,"myIPV6",'DN42_IPV6')
 try_read_env(my_paramaters,"myIPV6LL",'DN42_IPV6_LL')
@@ -97,7 +101,7 @@ bdconfpath = my_config["bdconfpath"]
 
 pathlib.Path(wgconfpath + "/peerinfo").mkdir(parents=True, exist_ok=True)
 
-client_valid_keys = ["peer_plaintext","peer_pub_key_pgp","peer_signature", "peerASN", "hasIPV4", "peerIPV4", "hasIPV6", "peerIPV6", "hasIPV6LL", "peerIPV6LL","MP_BGP","Ext_Nh", "hasHost", "peerHost", "peerWG_Pub_Key","peerWG_PS_Key", "peerContact", "PeerID"]
+client_valid_keys = ["peer_plaintext","peer_pub_key_pgp","peer_signature", "peerASN", "hasIPV4", "peerIPV4", "hasIPV6", "peerIPV6", "hasIPV6LL", "peerIPV6LL","MP_BGP","Ext_Nh", "hasHost", "peerHost", "peerWG_Pub_Key","peerWG_PS_Key", "peerContact", "PeerID","myIPV6LL_custom"]
 dn42repo_base = my_config["dn42repo_base"]
 DN42_valid_ipv4s = my_config["DN42_valid_ipv4s"]
 DN42_valid_ipv6s = my_config["DN42_valid_ipv6s"]
@@ -587,7 +591,7 @@ def check_valid_ip_range(IPclass,IPranges,ip,name):
     raise ValueError(ip + " is not a valid " + name + " address")
     
 
-async def check_reg_paramater(paramaters):
+async def check_reg_paramater(paramaters,allow_myIPV6LL_custom=False,alliw_exists=False):
     if (paramaters["hasIPV4"] or paramaters["hasIPV6"] or paramaters["hasIPV6LL"]) == False:
         raise ValueError("You can't peer without any IP.")
     mntner,admin = await get_info_from_asn(paramaters["peerASN"])
@@ -638,21 +642,28 @@ async def check_reg_paramater(paramaters):
     if paramaters["peerWG_PS_Key"] == "":
         paramaters["peerWG_PS_Key"] == None
     
+    if paramaters["myIPV6LL_custom"] != None and paramaters["myIPV6LL_custom"] != "":
+        if allow_myIPV6LL_custom == False:
+            raise ValueError("myIPV6LL_custom not allowed")
+        else:
+            paramaters["myIPV6LL"] = paramaters["myIPV6LL_custom"]
+    
     peerKey = paramaters["peerWG_Pub_Key"]
     if peerKey == None or len(peerKey) == 0:
         raise ValueError('"Your WG Public Key" can\'t be null.')
-    RRstate_repo.pull()
-    conf_dir = wgconfpath + "/peerinfo"
-    if os.path.isdir(conf_dir): #Check this node hasn't peer with us before
-        for old_conf_file in os.listdir(conf_dir):
-            if old_conf_file.endswith(".yaml") and os.path.isfile(f"{conf_dir}/{old_conf_file}"):
-                old_conf = yaml.load(open(f"{conf_dir}/{old_conf_file}").read(),Loader=yaml.SafeLoader)
-                if paramaters["peerIPV4"] != None and old_conf["peerIPV4"] == paramaters["peerIPV4"]:
-                    raise FileExistsError(f'This IPv4 address {paramaters["peerIPV4"]} already exisis in "{old_conf_file}", please remove the peering first.')
-                if paramaters["peerIPV6"] != None and old_conf["peerIPV6"] == paramaters["peerIPV6"]:
-                    raise FileExistsError(f'This IPv6 address {paramaters["peerIPV6"]} already exisis in "{old_conf_file}", please remove the peering first.')
-                if old_conf["peerHost"] != None and old_conf["peerHost"] == paramaters["peerHost"]:
-                    raise FileExistsError(f'This endpoint "{paramaters["peerHost"]}" already exisis in "{old_conf_file}", please remove the peering first.')
+    if alliw_exists == False:
+        RRstate_repo.pull()
+        conf_dir = wgconfpath + "/peerinfo"
+        if os.path.isdir(conf_dir): #Check this node hasn't peer with us before
+            for old_conf_file in os.listdir(conf_dir):
+                if old_conf_file.endswith(".yaml") and os.path.isfile(f"{conf_dir}/{old_conf_file}"):
+                    old_conf = yaml.load(open(f"{conf_dir}/{old_conf_file}").read(),Loader=yaml.SafeLoader)
+                    if paramaters["peerIPV4"] != None and old_conf["peerIPV4"] == paramaters["peerIPV4"]:
+                        raise FileExistsError(f'This IPv4 address {paramaters["peerIPV4"]} already exisis in "{old_conf_file}", please remove the peering first.')
+                    if paramaters["peerIPV6"] != None and old_conf["peerIPV6"] == paramaters["peerIPV6"]:
+                        raise FileExistsError(f'This IPv6 address {paramaters["peerIPV6"]} already exisis in "{old_conf_file}", please remove the peering first.')
+                    if old_conf["peerHost"] != None and old_conf["peerHost"] == paramaters["peerHost"]:
+                        raise FileExistsError(f'This endpoint "{paramaters["peerHost"]}" already exisis in "{old_conf_file}", please remove the peering first.')
     return paramaters
 
 def replace_str(text,replace):
@@ -713,9 +724,9 @@ def newConfig(paramaters,overwrite=False):
                                 PublicKey = { peerKey }
                                 AllowedIPs = 10.0.0.0/8, 172.20.0.0/14, 172.31.0.0/16, fd00::/8, fe80::/64
                                 """)
-    if peerHost != None:
+    if peerHost != None and peerHost != "":
         wgconf += f"Endpoint = { peerHost }\n"
-    if peerPSK != None:
+    if peerPSK != None and peerPSK != "":
         wgconf += f"PresharedKey = { peerPSK }\n"
     
     wgsh = textwrap.dedent(f"""\
@@ -723,8 +734,9 @@ def newConfig(paramaters,overwrite=False):
                                 ip link add dev {if_name} type wireguard
                                 wg setconf {if_name} {wgconfpath}/{if_name}.conf
                                 ip link set {if_name} up
-                                wondershaper {if_name} $WG_SPEED_LIMIT $WG_SPEED_LIMIT || true
                                 """)
+    if use_speed_linit:
+        wgsh += f"wondershaper {if_name} $WG_SPEED_LIMIT $WG_SPEED_LIMIT || true"
     birdPeerV4 = None
     birdPeerV6 = None
     if myIPV4 != None:
@@ -869,6 +881,7 @@ def get_paramaters(paramaters):
     paramaters["peerIPV6"]         = get_key_default(paramaters,"peerIPV6",None)
     paramaters["hasIPV6LL"]        = get_key_default(paramaters,"hasIPV6LL",False)
     paramaters["peerIPV6LL"]       = get_key_default(paramaters,"peerIPV6LL",None)
+    paramaters["myIPV6LL_custom"]  = get_key_default(paramaters,"myIPV6LL_custom",None)
     paramaters["MP_BGP"]           = get_key_default(paramaters,"MP_BGP",True)
     paramaters["Ext_Nh"]           = get_key_default(paramaters,"Ext_Nh",False)
     paramaters["hasHost"]          = get_key_default(paramaters,"hasHost",False)
