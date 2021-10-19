@@ -1066,7 +1066,7 @@ class My404Handler(tornado.web.RequestHandler):
         pass
 
 if __name__ == '__main__':
-    if my_config["urlprefix"] == "":
+    if my_config["urlprefix"] == "" or  my_config["urlprefix"] == "/":
         url_prefix = ""
         url_prefix_pre = ""
     elif my_config["urlprefix"][-1] == "/":
