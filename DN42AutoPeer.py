@@ -966,7 +966,7 @@ async def action(paramaters):
             if paramaters["myHost"] == None:
                 myHostDisplay = paramaters["myHostDisplay"]
             else:
-                myHostDisplay = myHost + ":" + str(paramaters["PeerID"])
+                myHostDisplay = paramaters["myHost"] + ":" + str(paramaters["PeerID"])
             myInfo = {
                 "My ASN":          paramaters["myASN"],
                 "DN42 IPv4":       paramaters["myIPV4"],
@@ -986,6 +986,7 @@ async def action(paramaters):
             errorcode = 404
             e = "The resource you are looking for might have been removed, had its name changed, or is temporarily unavailable.\n    " + str(e.filename)
         #return errcode, get_err_page(paramaters,title,traceback.format_exc())
+        print(traceback.format_exc())
         return errcode, get_err_page(paramaters,title,e)
 
 ipv4s = [ipaddress.ip_network(n) for n in requests.get("https://www.cloudflare.com/ips-v4").text.split("\n")]
