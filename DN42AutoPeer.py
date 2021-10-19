@@ -736,7 +736,7 @@ def newConfig(paramaters,overwrite=False):
                                 ip link set {if_name} up
                                 """)
     if use_speed_linit:
-        wgsh += f"wondershaper {if_name} $WG_SPEED_LIMIT $WG_SPEED_LIMIT || true"
+        wgsh += f"wondershaper {if_name} $WG_SPEED_LIMIT $WG_SPEED_LIMIT || true\n"
     birdPeerV4 = None
     birdPeerV6 = None
     if myIPV4 != None:
