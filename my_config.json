@@ -1,6 +1,7 @@
 {
     "jwt_secret": null,
     "html_title": "DN42 Self-Service Peering Portal",
+    "git_repo_url": "https://github.com/HuJK/DN42-AutoPeer",
     "listen_host": "0.0.0.0",
     "listen_port": "4242",
     "ssl_options": null,

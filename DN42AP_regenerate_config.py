@@ -55,7 +55,11 @@ async def main():
             action , paramaters = DN42AutoPeer.get_paramaters(paramaters)
             paramaters = {**paramaters,**old_conf}
             paramaters = await DN42AutoPeer.check_reg_paramater(paramaters,allow_myIPV6LL_custom=True,alliw_exists=True)
-            new_config = DN42AutoPeer.newConfig(paramaters,overwrite=True)
+            try:
+                new_config = DN42AutoPeer.newConfig(paramaters,overwrite=True)
+            except Exception as e:
+                print(old_conf_file)
+                raise e
             saveConfig(new_config)
             
 loop = asyncio.get_event_loop()
