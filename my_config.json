@@ -2,12 +2,17 @@
     "jwt_secret": null,
     "html_title": "DN42 Self-Service Peering Portal",
     "listen_host": "0.0.0.0",
-    "listen_port": 4242,
+    "listen_port": "4242",
     "ssl_options": null,
     "myWG_Pri_Key": "",
-    "wgconfpath": "/root/dn42",
+    "urlprefix": "",
+    "wgconfpath": "/etc/dn42ap",
     "bdconfpath": "/etc/bird/peers",
-    "dn42_whois_server": ["git","https://github.com/KusakabeSi/dn42-registry"],
+    "gitsyncpath": null,
+    "dn42_whois_server": [
+        "git",
+        "https://github.com/KusakabeSi/dn42-registry"
+    ],
     "dn42repo_base": "https://raw.githubusercontent.com/KusakabeSi/dv42-registry/master",
     "admin_mnt": "",
     "DN42_valid_ipv4s": [
