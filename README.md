@@ -1,6 +1,6 @@
 Peer with me at DN42 network!!
 
-https://github.com/KusakabeSi/RootlessRouter-UML
+https://twdn42.hujk.eu.org/
 
 ```
 pip3 install -r requirement.txt
