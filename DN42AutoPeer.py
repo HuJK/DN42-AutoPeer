@@ -70,6 +70,7 @@ try_read_env(my_config,"bdconfpath",'DN42AP_BIRDCONFPATH')
 try_read_env(my_config,"admin_mnt",'DN42AP_ADMIN')
 try_read_env(my_config,"urlprefix",'DN42AP_URLPREFIX')
 try_read_env(my_config,"gitsyncpath",'DN42AP_GIT_SYNC_PATH')
+try_read_env(my_config,"git_repo_url",'DN42AP_GIT_REPO_URL')
 
 RRstate_repo = DN42GIT(my_config["gitsyncpath"])
 
