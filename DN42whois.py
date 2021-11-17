@@ -285,12 +285,14 @@ class http_whois():
     async def http_query(self,query):
         client = tornado.httpclient.AsyncHTTPClient()
         try:
-            response = await client.fetch(self.url + "/" + query)
+            response_f = client.fetch(self.url + "/" + query)
+            response = await response_f
             result = response.body.decode("utf8")
             result_item = result.split("\n")
             result_item = list(filter(lambda l:not l.startswith("%") and ":" in l,result_item))
             return f"% Information related to '{query}':\n" + "\n".join(result_item) + "\n\n"
         except asyncio.CancelledError:
+            response_f.cancel()
             client.close()
             return ""
         except HTTPClientError as e:
@@ -298,28 +300,15 @@ class http_whois():
                 raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), query)
             raise e
 
-async def whois_server():
-    import socket
-    HOST = '0.0.0.0'
-    PORT = 43
-    print('prepareing for whois...')
-    my_whois = git_whois("https://github.com/KusakabeSi/dn42-registry","whoisdata",600)
-    #my_whois = http_whois("https://cdn.jsdelivr.net/gh/KusakabeSi/dn42-registry/data")
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    s.bind((HOST, PORT))
-    s.listen(5)
-    print('server start at: %s:%s' % (HOST, PORT))
-    print('wait for connection...')
-    while True:
+def get_whois_hendler(my_whois):
+    async def whois_hendler(reader, writer):
         try:
-            conn, addr = s.accept()
             query = b""
             while True:
-                indata = conn.recv(1024)
+                indata = await reader.read(1024)
                 query += indata
                 if len(indata) == 0: # connection closed
-                    conn.close()
+                    writer.close()
                     break
                 if b"\n" in indata:
                     try:
@@ -328,12 +317,25 @@ async def whois_server():
                     except Exception as e:
                         traceback.print_exc()
                         outdata = "% Not found"
-                    conn.send(outdata.encode())
-                    conn.close()
+                    writer.write(outdata.encode())
+                    await writer.drain()
+                    writer.close()
                     break
         except Exception as e:
             traceback.print_exc()
-    server.bind(("127.0.0.1",43))
+    return whois_hendler
+            
+async def whois_server():
+    HOST = '0.0.0.0'
+    PORT = 43
+    print('prepareing for whois...')
+    my_whois = git_whois("https://github.com/KusakabeSi/dn42-registry","whoisdata",600)
+    #my_whois = http_whois("https://cdn.jsdelivr.net/gh/KusakabeSi/dn42-registry/data")
+    
+    whois_hendler = get_whois_hendler(my_whois)
+    print('server start at: %s:%s' % (HOST, PORT))
+    server = await asyncio.start_server(whois_hendler,HOST,PORT)
+    print('wait for connection...')
 if __name__ == '__main__':
     loop = asyncio.get_event_loop()
     asyncio.ensure_future(whois_server())
