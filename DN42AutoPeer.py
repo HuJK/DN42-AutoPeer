@@ -417,13 +417,14 @@ async def try_get_pub_key(pgpsig):
     pgpsig = pgpsig[-8:]
     try:
         result = await whois_query("key-cert/PGPKEY-" + pgpsig)
+        result = list(filter(lambda l:l.startswith("certif:"),result.split("\n")))
+        result = list(map(lambda x:x.split(":")[1].lstrip(),result))
+        result = "\n".join(result)
+        return result
     except Exception as e:
-        print(e)
-        return ""
-    result = list(filter(lambda l:l.startswith("certif:"),result.split("\n")))
-    result = list(map(lambda x:x.split(":")[1].lstrip(),result))
-    result = "\n".join(result)
-    return result
+        pass
+    return ""
+
 
 def verify_signature_pgp(plaintext,fg,pub_key,raw_signature):
     pub = pgpy.PGPKey.from_blob(pub_key.encode("utf8"))[0]
