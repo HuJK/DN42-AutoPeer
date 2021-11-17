@@ -4,6 +4,7 @@ import time
 import errno
 import asyncio
 import tornado
+import traceback
 from git import Repo
 import ipaddress
 from tornado.httpclient import HTTPClientError
@@ -22,10 +23,7 @@ class whois():
         else:
             raise Exception("Support tcp or git only")
     async def query(self,query):
-        if self.proto == "git":
-            return self.whois.query(query)
-        else:
-            return await self.whois.query(query)
+        return await self.whois.query(query)
 
 prefixes = {"as-block","as-set","aut-num","dns","inet6num","inetnum","key-cert","mntner","organisation","person","registry","role","route","route6","route-set","schema","tinc-key"}
 
@@ -42,10 +40,10 @@ rewrite "^/([0-9]{2})$" /aut-num/AS42424200$1 last;
 rewrite "^/([0-9]{3})$" /aut-num/AS4242420$1 last;
 rewrite "^/([0-9]{4})$" /aut-num/AS424242$1 last;
 rewrite "^/([Aa][Ss]|)([0-9]+)$" /aut-num/AS$2 last;
-rewrite "^/([0-9]+)\.([0-9]+)\.([0-9]+)\.([0-9]+)/([0-9]+)$" /inetnum/$1.$2.$3.$4_$5 last;
-rewrite "^/([0-9]+)\.([0-9]+)\.([0-9]+)\.([0-9]+)$" /inetnum/$1.$2.$3.$4_32 last;
-rewrite "^/([0-9a-fA-F:]+)/([0-9]+)$" /inet6num/$1_$2 last;
-rewrite "^/([0-9a-fA-F:]+)$" /inet6num/$1_128 last;
+rewrite "^/([0-9]+)\.([0-9]+)\.([0-9]+)\.([0-9]+)[/_]([0-9]+)$" /inet_route/$1.$2.$3.$4_$5 last;
+rewrite "^/([0-9]+)\.([0-9]+)\.([0-9]+)\.([0-9]+)$" /inet_route/$1.$2.$3.$4_32 last;
+rewrite "^/([0-9a-fA-F:]+)[/_]([0-9]+)$" /inet_route6/$1_$2 last;
+rewrite "^/([0-9a-fA-F:]+)$" /inet_route6/$1_128 last;
 rewrite "^/([^/]+)-([Dd][Nn]42)$" /person/$1-DN42 last;
 rewrite "^/([^/]+)-([Nn][Ee][Oo][Nn][Ee][Tt][Ww][Oo][Rr][Kk])$" /person/$1-NEONETWORK last;
 rewrite "^/([^/]+)-([Mm][Nn][Tt])$" /mntner/$1-MNT last;
@@ -81,6 +79,12 @@ def add_prefix(query):
 def proc_data(data_in):
     ret_dict = {}
     for data_in_item in data_in.split("\n"):
+        if len(data_in_item) == 0:
+            continue
+        if data_in_item[0] == "%":
+            continue
+        if ":" not in data_in_item:
+            continue
         key , val = data_in_item.split(":",1)
         val = val.lstrip()
         if key in ret_dict:
@@ -125,28 +129,63 @@ class git_whois():
         self.pulltime = time.time()
         self.local_git = local_git
         self.repo.remotes.origin.pull()
-    def query(self,query):
+    async def query(self,query):
         query = query.strip()
         if time.time() - self.pulltime > self.cooldown:
             self.repo.remotes.origin.pull()
             self.pulltime = time.time()
         query = add_prefix(query)
-        if query.startswith("inetnum/") or query.startswith("inet6num/") or query.startswith("route/") or query.startswith("route6/"):
-            if query.startswith("inetnum/") or query.startswith("route/"):
+        if query.startswith("inetnum/") or query.startswith("inet6num/") or query.startswith("route/") or query.startswith("route6/") or query.startswith("inet_route/") or query.startswith("inet_route6/"):
+            if query.startswith("inetnum/") or query.startswith("route/") or query.startswith("inet_route/"):
                 max_length=32
-            elif query.startswith("inet6num/") or query.startswith("route6/"):
+            elif query.startswith("inet6num/") or query.startswith("route6/") or query.startswith("inet_route6/"):
                 max_length=128
-            body,length = query.split("_")
-            prefix,ip = body.split("/",1)
-            length = int(length)
+            prefix,body = query.split("/",1)
+            ip,length = ("",0)
+            if "_" in body:
+                ip,length = body.split("_")
+                length = int(length)
+            elif "/" in body:
+                ip,length = body.split("/")
+                length = int(length)
+            else:
+                ip = body
+                length = max_length
             if length > max_length:
                 raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), query)
+            ret_result = ""
+            inet_route_result = {"inet":False,"route":False}
             for i in range(length,-1,-1):
                 try:
                     try_net = ipaddress.ip_network(ip + "/" + str(i),strict=False)
-                    return self.file_query(prefix + "/" + str(try_net.network_address) + "_" + str(i))
+                    if prefix not in ("inet_route","inet_route6"):
+                        return self.file_query(prefix + "/" + str(try_net.network_address) + "_" + str(i))
+                    else:
+                        query_body = str(try_net.network_address) + "_" + str(i)
+                        if prefix == "inet_route":
+                            qi = "inetnum/"
+                            qr = "route/"
+                        elif prefix == "inet_route6":
+                            qi = "inet6num/"
+                            qr = "route6/"
+                        try:
+                            if inet_route_result["inet"] == False:
+                                ret_result += self.file_query(qi + query_body)
+                                inet_route_result["inet"] = True
+                        except FileNotFoundError as e:
+                            pass
+                        try:
+                            if inet_route_result["route"] == False:
+                                ret_result += self.file_query(qr + query_body)
+                                inet_route_result["route"] = True
+                        except FileNotFoundError as e:
+                            pass
+                        if inet_route_result["inet"] == True and inet_route_result["route"] == True:
+                            break
                 except FileNotFoundError as e:
                     pass
+            if ret_result != "":
+                return ret_result
             raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), query)
         else:
             return self.file_query(query)
@@ -157,7 +196,7 @@ class git_whois():
             result = response.decode("utf8")
             result_item = result.split("\n")
             result_item = list(filter(lambda l:not l.startswith("%") and ":" in l,result_item))
-            return "\n".join(result_item)
+            return f"% Information related to '{query}':\n" + "\n".join(result_item) + "\n\n"
         except FileNotFoundError:
             raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), query)
 
@@ -170,26 +209,76 @@ class http_whois():
     async def query(self,query):
         query = query.strip()
         query = add_prefix(query)
-        if query.startswith("inetnum/") or query.startswith("inet6num/") or query.startswith("route/") or query.startswith("route6/"):
-            if query.startswith("inetnum/") or query.startswith("route/"):
+        if query.startswith("inetnum/") or query.startswith("inet6num/") or query.startswith("route/") or query.startswith("route6/") or query.startswith("inet_route/") or query.startswith("inet_route6/"):
+            if query.startswith("inetnum/") or query.startswith("route/") or query.startswith("inet_route/"):
                 max_length=32
-            elif query.startswith("inet6num/") or query.startswith("route6/"):
+            elif query.startswith("inet6num/") or query.startswith("route6/") or query.startswith("inet_route6/"):
                 max_length=128
-            body,length = query.split("_")
-            prefix,ip = body.split("/",1)
-            length = int(length)
+            prefix,body = query.split("/",1)
+            ip,length = ("",0)
+            if "_" in body:
+                ip,length = body.split("_")
+                length = int(length)
+            elif "/" in body:
+                ip,length = body.split("/")
+                length = int(length)
+            else:
+                ip = body
+                length = max_length
             if length > max_length:
                 raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), query)
-            http_quaries = [ asyncio.create_task(self.http_query(prefix + "/" + str(ipaddress.ip_network(ip + "/" + str(i),strict=False).network_address) + "_" + str(i))) for i in range(length,-1,-1)]
-            result = ""
-            for i in range(0,length+1):
+            ret_result = ""
+            inet_route_result = {"inet":False,"route":False}
+            http_prequaries = {}
+            loop = asyncio.get_event_loop()
+            for i in range(length,-1,-1):
+                try_net = ipaddress.ip_network(ip + "/" + str(i),strict=False)
+                if prefix not in ("inet_route","inet_route6"):
+                    qq  = prefix + "/" + str(try_net.network_address) + "_" + str(i)
+                    http_prequaries[qq] = loop.create_task(self.http_query(qq))
+                else:
+                    query_body = str(try_net.network_address) + "_" + str(i)
+                    if prefix == "inet_route":
+                        qi = "inetnum/"
+                        qr = "route/"
+                    elif prefix == "inet_route6":
+                        qi = "inet6num/"
+                        qr = "route6/"
+                    http_prequaries[qi + query_body] = loop.create_task(self.http_query(qi + query_body))
+                    http_prequaries[qr + query_body] = loop.create_task(self.http_query(qr + query_body))
+            for i in range(length,-1,-1):
                 try:
-                    result = await http_quaries[i]
-                    for j in range(i+1,length+1):
-                        http_quaries[j].cancel()
-                    return result
+                    try_net = ipaddress.ip_network(ip + "/" + str(i),strict=False)
+                    if prefix not in ("inet_route","inet_route6"):
+                        return self.file_query(prefix + "/" + str(try_net.network_address) + "_" + str(i))
+                    else:
+                        query_body = str(try_net.network_address) + "_" + str(i)
+                        if prefix == "inet_route":
+                            qi = "inetnum/"
+                            qr = "route/"
+                        elif prefix == "inet_route6":
+                            qi = "inet6num/"
+                            qr = "route6/"
+                        try:
+                            if inet_route_result["inet"] == False:
+                                ret_result += await http_prequaries[qi + query_body]
+                                inet_route_result["inet"] = True
+                        except FileNotFoundError as e:
+                            pass
+                        try:
+                            if inet_route_result["route"] == False:
+                                ret_result += await http_prequaries[qr + query_body]
+                                inet_route_result["route"] = True
+                        except FileNotFoundError as e:
+                            pass
+                        if inet_route_result["inet"] == True and inet_route_result["route"] == True:
+                            break
                 except FileNotFoundError as e:
                     pass
+            for k,q in http_prequaries.items():
+                q.cancel()
+            if ret_result != "":
+                return ret_result
             raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), query)
         else:
             return await self.http_query(query)
@@ -200,30 +289,28 @@ class http_whois():
             result = response.body.decode("utf8")
             result_item = result.split("\n")
             result_item = list(filter(lambda l:not l.startswith("%") and ":" in l,result_item))
-            return "\n".join(result_item)
+            return f"% Information related to '{query}':\n" + "\n".join(result_item) + "\n\n"
+        except asyncio.CancelledError:
+            client.close()
+            return ""
         except HTTPClientError as e:
             if e.code == 404:
                 raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), query)
             raise e
-            
-            
-            
 
-def whois_server():
+async def whois_server():
     import socket
     HOST = '0.0.0.0'
     PORT = 43
-
     print('prepareing for whois...')
     my_whois = git_whois("https://github.com/KusakabeSi/dn42-registry","whoisdata",600)
+    #my_whois = http_whois("https://cdn.jsdelivr.net/gh/KusakabeSi/dn42-registry/data")
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     s.bind((HOST, PORT))
     s.listen(5)
-
     print('server start at: %s:%s' % (HOST, PORT))
     print('wait for connection...')
-
     while True:
         try:
             conn, addr = s.accept()
@@ -237,16 +324,17 @@ def whois_server():
                 if b"\n" in indata:
                     try:
                         print("WHOIS query: " + query.decode().strip())
-                        outdata = my_whois.query(query.decode())
+                        outdata = await my_whois.query(query.decode())
                     except Exception as e:
+                        traceback.print_exc()
                         outdata = "% Not found"
                     conn.send(outdata.encode())
                     conn.close()
                     break
         except Exception as e:
-            #raise(e)
-            print(e)
-        
+            traceback.print_exc()
     server.bind(("127.0.0.1",43))
 if __name__ == '__main__':
-    whois_server()
+    loop = asyncio.get_event_loop()
+    asyncio.ensure_future(whois_server())
+    loop.run_forever()

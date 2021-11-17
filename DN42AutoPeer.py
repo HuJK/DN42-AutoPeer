@@ -102,7 +102,7 @@ bdconfpath = my_config["bdconfpath"]
 
 pathlib.Path(wgconfpath + "/peerinfo").mkdir(parents=True, exist_ok=True)
 
-client_valid_keys = ["peer_plaintext","peer_pub_key_pgp","peer_signature", "peerASN", "hasIPV4", "peerIPV4", "hasIPV6", "peerIPV6", "hasIPV6LL", "peerIPV6LL","MP_BGP","Ext_Nh", "hasHost", "peerHost", "peerWG_Pub_Key","peerWG_PS_Key", "peerContact", "PeerID","myIPV6LL_custom"]
+client_valid_keys = ["peer_plaintext","peer_pub_key_pgp","peer_signature", "peerASN", "hasIPV4", "peerIPV4", "hasIPV6", "peerIPV6", "hasIPV6LL", "peerIPV6LL","MP_BGP","Ext_Nh", "hasHost", "peerHost", "peerWG_Pub_Key","peerWG_PS_Key", "peerContact", "PeerID","myIPV6LL_custom","noTransit"]
 dn42repo_base = my_config["dn42repo_base"]
 DN42_valid_ipv4s = my_config["DN42_valid_ipv4s"]
 DN42_valid_ipv6s = my_config["DN42_valid_ipv6s"]
@@ -155,7 +155,7 @@ async def get_signature_html(baseURL,paramaters):
             if m not in methods_class["Supported"]:
                 methods_class["Supported"][m] = []
             methods_class["Supported"][m] += [v]
-            if m == "PGPKEY":
+            if m in { "PGPKEY" , "pgp-fingerprint" }:
                 if paramaters["peer_pub_key_pgp"] == "":
                     paramaters["peer_pub_key_pgp"] = await try_get_pub_key(v)
         else:
@@ -298,6 +298,17 @@ def get_html(paramaters,peerSuccess=False):
         <a href="{ my_config["git_repo_url"] }" class="github-corner" aria-label="View source on GitHub"><svg width="80" height="80" viewBox="0 0 250 250" style="fill:#64CEAA; color:#fff; position: absolute; top: 0; border: 0; right: 0;" aria-hidden="true"><path d="M0,0 L115,115 L130,115 L142,142 L250,250 L250,0 Z"></path><path d="M128.3,109.0 C113.8,99.7 119.0,89.6 119.0,89.6 C122.0,82.7 120.5,78.6 120.5,78.6 C119.2,72.0 123.4,76.3 123.4,76.3 C127.3,80.9 125.5,87.3 125.5,87.3 C122.9,97.6 130.6,101.9 134.4,103.2" fill="currentColor" style="transform-origin: 130px 106px;" class="octo-arm"></path><path d="M115.0,115.0 C114.9,115.1 118.7,116.5 119.8,115.4 L133.7,101.6 C136.9,99.2 139.9,98.4 142.2,98.6 C133.8,88.0 127.5,74.4 143.8,58.0 C148.5,53.4 154.0,51.2 159.7,51.0 C160.3,49.4 163.2,43.6 171.4,40.1 C171.4,40.1 176.1,42.5 178.8,56.2 C183.1,58.6 187.2,61.8 190.9,65.4 C194.5,69.0 197.7,73.2 200.1,77.6 C213.8,80.2 216.3,84.9 216.3,84.9 C212.7,93.1 206.9,96.0 205.4,96.6 C205.1,102.4 203.0,107.8 198.3,112.5 C181.9,128.9 168.3,122.5 157.7,114.1 C157.9,116.9 156.7,120.9 152.7,124.9 L141.0,136.5 C139.8,137.7 141.6,141.9 141.8,141.8 Z" fill="currentColor" class="octo-body"></path></svg></a><style>.github-corner:hover .octo-arm{{animation:octocat-wave 560ms ease-in-out}}@keyframes octocat-wave{{0%,100%{{transform:rotate(0)}}20%,60%{{transform:rotate(-25deg)}}40%,80%{{transform:rotate(10deg)}}}}@media (max-width:500px){{.github-corner:hover .octo-arm{{animation:none}}.github-corner .octo-arm{{animation:octocat-wave 560ms ease-in-out}}}}</style>
         <style type="text/css">
             code {{display: block; /* fixes a strange ie margin bug */font-family: Courier New;font-size: 11pt;overflow:auto;background: #f0f0f0 url(data:image/gif;base64,iVBORw0KGgoAAAANSUhEUgAAAAsAAASwCAYAAAAt7rCDAAAABHNCSVQICAgIfAhkiAAAAQJJREFUeJzt0kEKhDAMBdA4zFmbM+W0upqFOhXrDILwsimFR5pfMrXW5jhZr7PwRlxVX8//jNHrGhExjXzdu9c5IiIz+7iqVmB7Hwp4OMa2nhhwN/PRGEMBh3Zjt6KfpzPztxW9MSAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzAMwzB8HS+J9kUTvzEDMwAAAABJRU5ErkJggg==) left top repeat-y;border: 10px solid white;padding: 10px 10px 10px 21px;max-height:1000px;line-height: 1.2em;}}
+            html {{
+              height: 100%;
+              width: 100%;
+              display: flex;
+              justify-content: center;
+            }}
+            body {{
+              height: 100%;
+              width: 100%;
+              max-width: 1000px;
+            }}
             table {{
               table-layout: fixed;
               width: 100%;
@@ -322,7 +333,7 @@ def get_html(paramaters,peerSuccess=False):
 <form action="action_page.php" method="post" class="markdown-body">
  <h2>Authentication</h2>
  <table class="table">
-   <tr><td>Your ASN</td><td><input type="text" value="{peerASN if peerASN != None else ""}" name="peerASN" style="width:50%" /><input type="submit" name="action" value="Get Signature" /></td></tr>
+   <tr><td>Your ASN</td><td><input type="text" value="{peerASN if peerASN != None else ""}" name="peerASN" style="width:75%" /><input type="submit" name="action" value="Get Signature" /></td></tr>
    <tr><td>Plain text to sign</td><td><input type="text" value="{peer_plaintext}" name="peer_plaintext" readonly/></td></tr>
    <tr><td>Your PGP public key<br>(leave it blank if you don't use it)</td><td><textarea name="peer_pub_key_pgp">{peer_pub_key_pgp}</textarea></td></tr>
    <tr><td>Your signature</td><td><textarea name="peer_signature">{peer_signature}</textarea></td></tr>
@@ -365,12 +376,12 @@ def get_html(paramaters,peerSuccess=False):
 """
 
 async def get_info_from_asn(asn):
-    asn_info = (await whois_query("aut-num/" + asn))
+    asn_info = await whois_query("aut-num/" + asn)
     data = DN42whois.proc_data(asn_info)
     return data["mnt-by"][0] , data["admin-c"][0]
 
 async def get_mntner_info(mntner):
-    mntner_info = (await whois_query("mntner/" + mntner))
+    mntner_info = await whois_query("mntner/" + mntner)
     ret = DN42whois.proc_data(mntner_info)
     if "auth" not in ret:
         ret["auth"] = []
@@ -391,16 +402,14 @@ async def get_auth_method(mnt,admin):
         authes += (await get_mntner_info(mnt))["auth"]
     if admin != None:
         authes += (await get_person_info(admin))["auth"]
-    ret = []
+    ret = {}
     for a in authes:
         if a.startswith("PGPKEY"):
-            ainfo = a.split("-",1)
+            ainfo = " ".join(a.split("-",1))
         else:
-            ainfo = a.split(" ",1)
-        if len(ainfo) < 2:
-            ainfo += [""] * (2-len(ainfo))
-        ret += [ainfo]
-    return ret
+            ainfo = a
+        ret[ainfo] = False
+    return list(filter(lambda x:len(x) == 2,[r.split(" ",1) for r,v in ret.items()]))
 
 async def try_get_pub_key(pgpsig):
     if len(pgpsig) < 8:
@@ -408,12 +417,14 @@ async def try_get_pub_key(pgpsig):
     pgpsig = pgpsig[-8:]
     try:
         result = await whois_query("key-cert/PGPKEY-" + pgpsig)
-    except:
-        return ""
-    result = list(filter(lambda l:l.startswith("certif:"),result))
-    result = list(map(lambda x:x.split(":")[1].lstrip(),result))
-    result = "\n".join(result)
-    return result
+        result = list(filter(lambda l:l.startswith("certif:"),result.split("\n")))
+        result = list(map(lambda x:x.split(":")[1].lstrip(),result))
+        result = "\n".join(result)
+        return result
+    except Exception as e:
+        pass
+    return ""
+
 
 def verify_signature_pgp(plaintext,fg,pub_key,raw_signature):
     pub = pgpy.PGPKey.from_blob(pub_key.encode("utf8"))[0]
@@ -601,8 +612,13 @@ async def check_reg_paramater(paramaters,allow_myIPV6LL_custom=False,alliw_exist
         peerIPV4_info = DN42whois.proc_data((await whois_query(paramaters["peerIPV4"])))
         if paramaters["myIPV4"] == None:
             raise NotImplementedError("Sorry, I don't have IPv4 address.")
-        if peerIPV4_info["admin-c"][0] != admin:
-            raise PermissionError("IP " + paramaters["peerIPV4"] + " owned by " + peerIPV4_info["admin-c"][0] + " instead of " + admin)
+        if "origin" not in peerIPV4_info or len(peerIPV4_info["origin"]) == 0:
+            originASN = "nobody"
+        else:
+            originASN = peerIPV4_info["origin"][0]
+        if originASN != paramaters["peerASN"]:
+            ipowner = peerIPV4_info["admin-c"][0]
+            raise PermissionError("IP " + paramaters["peerIPV4"] + f" owned by {originASN}({ipowner}) instead of {paramaters['peerASN']}({admin})")
     else:
         paramaters["peerIPV4"] = None
     if paramaters["hasIPV6"]:
@@ -610,14 +626,21 @@ async def check_reg_paramater(paramaters,allow_myIPV6LL_custom=False,alliw_exist
         peerIPV6_info = DN42whois.proc_data((await whois_query(paramaters["peerIPV6"])))
         if paramaters["myIPV6"] == None:
             raise NotImplementedError("Sorry, I don't have IPv6 address.")
-        if peerIPV6_info["admin-c"][0] != admin:
-            raise PermissionError("IP " + paramaters["peerIPV6"] + " owned by " + peerIPV6_info["admin-c"][0] + " instead of " + admin)
+        if "origin" not in peerIPV6_info or len(peerIPV6_info["origin"]) == 0:
+            originASN = "nobody"
+        else:
+            originASN = peerIPV6_info["origin"][0]
+        if originASN != paramaters["peerASN"]:
+            ipowner = peerIPV6_info["admin-c"][0]
+            raise PermissionError("IP " + paramaters["peerIPV6"] + f" owned by {originASN}({ipowner}) instead of {paramaters['peerASN']}({admin})")
     else:
         paramaters["peerIPV6"] = None
     if paramaters["hasIPV6LL"]:
         check_valid_ip_range(IPv6Network,valid_ipv6_lilos,paramaters["peerIPV6LL"],"link-local ipv6")
         if paramaters["myIPV6LL"] == None:
             raise NotImplementedError("Sorry, I don't have IPv6 link-local address.")
+        if paramaters["myIPV6LL"] == paramaters["peerIPV6LL"]:
+            raise ValueError("Conflict. Your IPv6 link-local address are conflict with my IPv6 link-local address.")
     else:
         paramaters["peerIPV6LL"] = None
     if paramaters["MP_BGP"]:
@@ -682,6 +705,7 @@ def newConfig(paramaters,overwrite=False):
     peerIPV4 = paramaters["peerIPV4"]
     peerIPV6 = paramaters["peerIPV6"]
     peerIPV6LL = paramaters["peerIPV6LL"]
+    noTransit =  paramaters["noTransit"]
     MP_BGP = paramaters["MP_BGP"]
     Ext_Nh = paramaters["Ext_Nh"]
     myIPV4 = paramaters["myIPV4"]
@@ -761,7 +785,6 @@ def newConfig(paramaters,overwrite=False):
     
     birdconf = ""
     enhfeature = ""
-    
     if MP_BGP == True:
         filter46 = ""
         filter64 = ""
@@ -798,7 +821,6 @@ def newConfig(paramaters,overwrite=False):
                                     
     paramaters = { valid_key: paramaters[valid_key] for valid_key in client_valid_keys }
     paramaters["peer_signature"] = ""
-    paramaters["peer_pub_key_pgp"] = ""
     paramaters["peer_plaintext"] = ""
     paramaters["peerName"] = peerName
     return {
@@ -888,6 +910,7 @@ def get_paramaters(paramaters):
     paramaters["hasIPV6LL"]        = get_key_default(paramaters,"hasIPV6LL",False)
     paramaters["peerIPV6LL"]       = get_key_default(paramaters,"peerIPV6LL",None)
     paramaters["myIPV6LL_custom"]  = get_key_default(paramaters,"myIPV6LL_custom",None)
+    paramaters["noTransit"]        = get_key_default(paramaters,"noTransit",False)
     paramaters["MP_BGP"]           = get_key_default(paramaters,"MP_BGP",True)
     paramaters["Ext_Nh"]           = get_key_default(paramaters,"Ext_Nh",False)
     paramaters["hasHost"]          = get_key_default(paramaters,"hasHost",False)
