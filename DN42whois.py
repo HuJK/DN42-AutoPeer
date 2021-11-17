@@ -40,9 +40,9 @@ rewrite "^/([0-9]{2})$" /aut-num/AS42424200$1 last;
 rewrite "^/([0-9]{3})$" /aut-num/AS4242420$1 last;
 rewrite "^/([0-9]{4})$" /aut-num/AS424242$1 last;
 rewrite "^/([Aa][Ss]|)([0-9]+)$" /aut-num/AS$2 last;
-rewrite "^/([0-9]+)\.([0-9]+)\.([0-9]+)\.([0-9]+)/([0-9]+)$" /inet_route/$1.$2.$3.$4_$5 last;
+rewrite "^/([0-9]+)\.([0-9]+)\.([0-9]+)\.([0-9]+)[/_]([0-9]+)$" /inet_route/$1.$2.$3.$4_$5 last;
 rewrite "^/([0-9]+)\.([0-9]+)\.([0-9]+)\.([0-9]+)$" /inet_route/$1.$2.$3.$4_32 last;
-rewrite "^/([0-9a-fA-F:]+)/([0-9]+)$" /inet_route6/$1_$2 last;
+rewrite "^/([0-9a-fA-F:]+)[/_]([0-9]+)$" /inet_route6/$1_$2 last;
 rewrite "^/([0-9a-fA-F:]+)$" /inet_route6/$1_128 last;
 rewrite "^/([^/]+)-([Dd][Nn]42)$" /person/$1-DN42 last;
 rewrite "^/([^/]+)-([Nn][Ee][Oo][Nn][Ee][Tt][Ww][Oo][Rr][Kk])$" /person/$1-NEONETWORK last;
@@ -145,13 +145,16 @@ class git_whois():
             if "_" in body:
                 ip,length = body.split("_")
                 length = int(length)
+            elif "/" in body:
+                ip,length = body.split("/")
+                length = int(length)
             else:
                 ip = body
                 length = max_length
             if length > max_length:
                 raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), query)
             ret_result = ""
-            inet_route_result = {"inet":None,"route":None}
+            inet_route_result = {"inet":False,"route":False}
             for i in range(length,-1,-1):
                 try:
                     try_net = ipaddress.ip_network(ip + "/" + str(i),strict=False)
@@ -166,16 +169,18 @@ class git_whois():
                             qi = "inet6num/"
                             qr = "route6/"
                         try:
-                            ret_result += self.file_query(qi + query_body)
-                            inet_route_result["inet"] = True
+                            if inet_route_result["inet"] == False:
+                                ret_result += self.file_query(qi + query_body)
+                                inet_route_result["inet"] = True
                         except FileNotFoundError as e:
                             pass
                         try:
-                            ret_result += self.file_query(qr + query_body)
-                            inet_route_result["route"] = True
+                            if inet_route_result["route"] == False:
+                                ret_result += self.file_query(qr + query_body)
+                                inet_route_result["route"] = True
                         except FileNotFoundError as e:
                             pass
-                        if inet_route_result["inet"] != None and inet_route_result["route"] != None:
+                        if inet_route_result["inet"] == True and inet_route_result["route"] == True:
                             break
                 except FileNotFoundError as e:
                     pass
@@ -214,13 +219,16 @@ class http_whois():
             if "_" in body:
                 ip,length = body.split("_")
                 length = int(length)
+            elif "/" in body:
+                ip,length = body.split("/")
+                length = int(length)
             else:
                 ip = body
                 length = max_length
             if length > max_length:
                 raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), query)
             ret_result = ""
-            inet_route_result = {"inet":None,"route":None}
+            inet_route_result = {"inet":False,"route":False}
             http_prequaries = {}
             loop = asyncio.get_event_loop()
             for i in range(length,-1,-1):
@@ -252,16 +260,18 @@ class http_whois():
                             qi = "inet6num/"
                             qr = "route6/"
                         try:
-                            ret_result += await http_prequaries[qi + query_body]
-                            inet_route_result["inet"] = True
+                            if inet_route_result["inet"] == False:
+                                ret_result += await http_prequaries[qi + query_body]
+                                inet_route_result["inet"] = True
                         except FileNotFoundError as e:
                             pass
                         try:
-                            ret_result += await http_prequaries[qr + query_body]
-                            inet_route_result["route"] = True
+                            if inet_route_result["route"] == False:
+                                ret_result += await http_prequaries[qr + query_body]
+                                inet_route_result["route"] = True
                         except FileNotFoundError as e:
                             pass
-                        if inet_route_result["inet"] != None and inet_route_result["route"] != None:
+                        if inet_route_result["inet"] == True and inet_route_result["route"] == True:
                             break
                 except FileNotFoundError as e:
                     pass
@@ -275,12 +285,14 @@ class http_whois():
     async def http_query(self,query):
         client = tornado.httpclient.AsyncHTTPClient()
         try:
-            print(self.url + "/" + query)
             response = await client.fetch(self.url + "/" + query)
             result = response.body.decode("utf8")
             result_item = result.split("\n")
             result_item = list(filter(lambda l:not l.startswith("%") and ":" in l,result_item))
             return f"% Information related to '{query}':\n" + "\n".join(result_item) + "\n\n"
+        except asyncio.CancelledError:
+            client.close()
+            return ""
         except HTTPClientError as e:
             if e.code == 404:
                 raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), query)
@@ -312,8 +324,7 @@ async def whois_server():
                 if b"\n" in indata:
                     try:
                         print("WHOIS query: " + query.decode().strip())
-                        outdata = my_whois.query(query.decode())
-                        outdata = await outdata
+                        outdata = await my_whois.query(query.decode())
                     except Exception as e:
                         traceback.print_exc()
                         outdata = "% Not found"
