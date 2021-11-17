@@ -155,7 +155,7 @@ async def get_signature_html(baseURL,paramaters):
             if m not in methods_class["Supported"]:
                 methods_class["Supported"][m] = []
             methods_class["Supported"][m] += [v]
-            if m == "PGPKEY":
+            if m in { "PGPKEY" , "pgp-fingerprint" }:
                 if paramaters["peer_pub_key_pgp"] == "":
                     paramaters["peer_pub_key_pgp"] = await try_get_pub_key(v)
         else:
@@ -402,16 +402,14 @@ async def get_auth_method(mnt,admin):
         authes += (await get_mntner_info(mnt))["auth"]
     if admin != None:
         authes += (await get_person_info(admin))["auth"]
-    ret = []
+    ret = {}
     for a in authes:
         if a.startswith("PGPKEY"):
-            ainfo = a.split("-",1)
+            ainfo = " ".join(a.split("-",1))
         else:
-            ainfo = a.split(" ",1)
-        if len(ainfo) < 2:
-            ainfo += [""] * (2-len(ainfo))
-        ret += [ainfo]
-    return ret
+            ainfo = a
+        ret[ainfo] = False
+    return list(filter(lambda x:len(x) == 2,[r.split(" ",1) for r,v in ret.items()]))
 
 async def try_get_pub_key(pgpsig):
     if len(pgpsig) < 8:
@@ -419,9 +417,10 @@ async def try_get_pub_key(pgpsig):
     pgpsig = pgpsig[-8:]
     try:
         result = await whois_query("key-cert/PGPKEY-" + pgpsig)
-    except:
+    except Exception as e:
+        print(e)
         return ""
-    result = list(filter(lambda l:l.startswith("certif:"),result))
+    result = list(filter(lambda l:l.startswith("certif:"),result.split("\n")))
     result = list(map(lambda x:x.split(":")[1].lstrip(),result))
     result = "\n".join(result)
     return result
