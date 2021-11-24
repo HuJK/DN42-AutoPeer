@@ -405,7 +405,13 @@ async def get_auth_method(mnt,admin):
     ret = {}
     for a in authes:
         if a.startswith("PGPKEY"):
-            ainfo = " ".join(a.split("-",1))
+            method , pgp_sign8 = a.split("-",1)
+            pgp_pubkey_str = await try_get_pub_key(pgp_sign8)
+            if pgp_pubkey_str == "":
+                continue
+            pub = pgpy.PGPKey.from_blob(pgp_pubkey_str.encode("utf8"))[0]
+            real_fingerprint = pub.fingerprint.replace(" ","")
+            ainfo = method + " " + real_fingerprint
         else:
             ainfo = a
         ret[ainfo] = False
@@ -439,10 +445,8 @@ def verify_signature_pgp(plaintext,fg,pub_key,raw_signature):
 
 def verify_signature_pgpn8(plaintext,fg,pub_key,raw_signature):
     pub = pgpy.PGPKey.from_blob(pub_key.encode("utf8"))[0]
-    fg_in = fg.replace(" ","")[-8:]
-    fg_p = pub.fingerprint.replace(" ","")[-8:]
-    if len(fg_in) != 8 or len(fg_p) != 8:
-        raise ValueError("fingerprint not match")
+    fg_in = fg.replace(" ","")
+    fg_p = pub.fingerprint.replace(" ","")
     if fg_in != fg_p:
         raise ValueError("fingerprint not match")
     sig = pgpy.PGPSignature.from_blob(raw_signature.encode("utf8"))
@@ -675,6 +679,8 @@ async def check_reg_paramater(paramaters,allow_myIPV6LL_custom=False,alliw_exist
     peerKey = paramaters["peerWG_Pub_Key"]
     if peerKey == None or len(peerKey) == 0:
         raise ValueError('"Your WG Public Key" can\'t be null.')
+    if peerKey == paramaters["myWG_Pub_Key"]:
+        raise ValueError('You can\'t use my wireguard public key as your wireguard public key.')
     if alliw_exists == False:
         RRstate_repo.pull()
         conf_dir = wgconfpath + "/peerinfo"
@@ -964,9 +970,9 @@ async def action(paramaters):
         if paramaters["peerASN"] == None:
             raise ValueError("peerASN can't be null.")
         if paramaters["peerASN"].startswith("AS"):
-            aaa = int(paramaters['peerASN'][2:])
+            check_num = int(paramaters['peerASN'][2:])
         else:
-            aaa = int(paramaters['peerASN'])
+            check_num = int(paramaters['peerASN'])
             paramaters["peerASN"] = "AS" + paramaters["peerASN"]
         #Actions need ASN
         if action=="Delete":
@@ -989,6 +995,8 @@ async def action(paramaters):
                 paramaters["PeerID"] = None
             paramaters = await check_reg_paramater(paramaters)
             new_config = newConfig(paramaters)
+            if mntner == my_config["admin_mnt"]:
+                paramaters["peer_pub_key_pgp"] = ""
             paramaters = new_config["paramaters"]
             saveConfig(new_config)
             paramaters = {**paramaters, **my_paramaters}
