@@ -808,7 +808,9 @@ def newConfig(paramaters,overwrite=False):
     if use_speed_limit:
         wgsh += f"wondershaper {if_name} $WG_SPEED_LIMIT $WG_SPEED_LIMIT || true\n"
     birdPeerV4 = None
+    birdMyV4 = myIPV4
     birdPeerV6 = None
+    birdMyV6 = None
     if myIPV4 != None:
         if Ext_Nh == True:
             pass # wgsh += f"ip addr add {myIPV4}/32 dev {if_name}\n"
@@ -823,10 +825,12 @@ def newConfig(paramaters,overwrite=False):
         pass #wgsh += f"ip addr add {myIPV6}/128 dev {if_name}\n"
         wgsh += f"ip addr add {myIPV6LL}/64 dev {if_name}\n"
         birdPeerV6 = peerIPV6LL
+        birdMyV6 = myIPV6LL
     elif peerIPV6 != None:
         wgsh += f"ip addr add {myIPV6} peer {peerIPV6} dev {if_name}\n"
         wgsh += f"ip route add {peerIPV6}/128 src {myIPV6} dev {if_name}\n"
         birdPeerV6 = peerIPV6
+        birdMyV6 = myIPV6
     
     birdconf = ""
     channel4 = ""
@@ -914,6 +918,7 @@ def newConfig(paramaters,overwrite=False):
         if peerIPV6 != None or peerIPV6LL != None:
             birdconf += textwrap.dedent(f"""\
                                         protocol bgp dn42_{peerName}_v6 from dnpeers {{
+                                            source address {birdMyV6};
                                             neighbor {birdPeerV6} % '{if_name}' as {peerASN};
                                             {channel4}
                                             {channel6}
@@ -923,6 +928,7 @@ def newConfig(paramaters,overwrite=False):
         if birdPeerV4 != None:
             birdconf += textwrap.dedent(f"""\
                                         protocol bgp dn42_{peerName}_v4 from dnpeers {{
+                                            source address {birdMyV4};
                                             neighbor {birdPeerV4} % '{if_name}' as {peerASN};
                                             {channel4}
                                             ipv6 {{
@@ -934,6 +940,7 @@ def newConfig(paramaters,overwrite=False):
         if peerIPV6 != None or peerIPV6LL != None:
             birdconf += textwrap.dedent(f"""\
                                         protocol bgp dn42_{peerName}_v6 from dnpeers {{
+                                            source address {birdMyV6};
                                             neighbor {birdPeerV6} % '{if_name}' as {peerASN};
                                             ipv4 {{
                                                 import none;
