@@ -10,7 +10,7 @@ from distutils.dir_util import copy_tree
 
 conf_dir = DN42AutoPeer.wgconfpath + "/peerinfo"
 
-bkfdr = f"/tmp/dn42ap_{str(int(time.time()))}"
+bkfdr = os.path.expanduser(f"~/dn42ap_{str(int(time.time()))}")
 
 backup = input(f"This script will clear all old files in {DN42AutoPeer.wgconfpath} and {DN42AutoPeer.bdconfpath}, backup it into {bkfdr} ? (Y/N)")
 

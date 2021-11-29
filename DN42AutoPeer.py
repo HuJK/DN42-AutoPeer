@@ -47,13 +47,22 @@ if my_config["jwt_secret"] == None:
     # open("my_config.json","w").write(json.dumps(my_config,indent=4,ensure_ascii=False))
 jwt_secret = my_config["jwt_secret"]
 
-def try_read_env(params,pkey,ekey):
+def try_read_env(params,pkey,ekey,default=None):
     if ekey in os.environ:
-        params[pkey] = os.environ[ekey]
+        if default == None:
+            params[pkey] = os.environ[ekey]
+        elif type(default) == bool:
+            params[pkey] = os.environ[ekey].lower() == "true"
+        else:
+            params[pkey] = type(default)(os.environ[ekey])
+    if pkey not in params:
+        if default == None:
+            raise ValueError("default for " + pkey + "not set")
+        params[pkey] = default
 
-use_speed_linit = False
+use_speed_limit = False
 if "WG_SPEED_LIMIT" in os.environ:
-    use_speed_linit = True
+    use_speed_limit = True
 
 try_read_env(my_paramaters,"myIPV4",'DN42_IPV4')
 try_read_env(my_paramaters,"myIPV6",'DN42_IPV6')
@@ -71,6 +80,7 @@ try_read_env(my_config,"admin_mnt",'DN42AP_ADMIN')
 try_read_env(my_config,"urlprefix",'DN42AP_URLPREFIX')
 try_read_env(my_config,"gitsyncpath",'DN42AP_GIT_SYNC_PATH')
 try_read_env(my_config,"git_repo_url",'DN42AP_GIT_REPO_URL')
+try_read_env(my_config,"init_device",'DN42AP_INIT_DEVICE',True)
 
 RRstate_repo = DN42GIT(my_config["gitsyncpath"])
 
@@ -102,7 +112,7 @@ bdconfpath = my_config["bdconfpath"]
 
 pathlib.Path(wgconfpath + "/peerinfo").mkdir(parents=True, exist_ok=True)
 
-client_valid_keys = ["peer_plaintext","peer_pub_key_pgp","peer_signature", "peerASN", "hasIPV4", "peerIPV4", "hasIPV6", "peerIPV6", "hasIPV6LL", "peerIPV6LL","MP_BGP","Ext_Nh", "hasHost", "peerHost", "peerWG_Pub_Key","peerWG_PS_Key", "peerContact", "PeerID","myIPV6LL_custom","noTransit"]
+client_valid_keys = ["peer_plaintext","peer_pub_key_pgp","peer_signature", "peerASN", "hasIPV4", "peerIPV4", "hasIPV6", "peerIPV6", "hasIPV6LL", "peerIPV6LL","MP_BGP","Ext_Nh", "hasHost", "peerHost", "peerWG_Pub_Key","peerWG_PS_Key", "peerContact", "PeerID","myIPV6LL_custom","transitMode"]
 dn42repo_base = my_config["dn42repo_base"]
 DN42_valid_ipv4s = my_config["DN42_valid_ipv4s"]
 DN42_valid_ipv6s = my_config["DN42_valid_ipv6s"]
@@ -620,9 +630,21 @@ async def check_reg_paramater(paramaters,allow_myIPV6LL_custom=False,alliw_exist
             originASN = "nobody"
         else:
             originASN = peerIPV4_info["origin"][0]
-        if originASN != paramaters["peerASN"]:
+            
+        origin_check_pass = False
+        for origin in peerIPV4_info["origin"]:
+            if origin == paramaters["peerASN"]:
+                origin_check_pass = True
+        if origin_check_pass:
+            pass
+        elif mntner == peerIPV4_info["mnt-by"][0] and mntner != "DN42-MNT":
+            pass
+        elif admin == peerIPV4_info["admin-c"][0]:
+            pass
+        else:
             ipowner = peerIPV4_info["admin-c"][0]
             raise PermissionError("IP " + paramaters["peerIPV4"] + f" owned by {originASN}({ipowner}) instead of {paramaters['peerASN']}({admin})")
+            
     else:
         paramaters["peerIPV4"] = None
     if paramaters["hasIPV6"]:
@@ -634,9 +656,20 @@ async def check_reg_paramater(paramaters,allow_myIPV6LL_custom=False,alliw_exist
             originASN = "nobody"
         else:
             originASN = peerIPV6_info["origin"][0]
-        if originASN != paramaters["peerASN"]:
-            ipowner = peerIPV6_info["admin-c"][0]
-            raise PermissionError("IP " + paramaters["peerIPV6"] + f" owned by {originASN}({ipowner}) instead of {paramaters['peerASN']}({admin})")
+            
+        origin_check_pass = False
+        for origin in peerIPV6_info["origin"]:
+            if origin == paramaters["peerASN"]:
+                origin_check_pass = True
+        if origin_check_pass:
+            pass
+        elif mntner == peerIPV4_info["mnt-by"][0] and mntner != "DN42-MNT":
+            pass
+        elif admin == peerIPV4_info["admin-c"][0]:
+            pass
+        else:
+            ipowner = peerIPV4_info["admin-c"][0]
+            raise PermissionError("IP " + paramaters["peerIPV4"] + f" owned by {originASN}({ipowner}) instead of {paramaters['peerASN']}({admin})")
     else:
         paramaters["peerIPV6"] = None
     if paramaters["hasIPV6LL"]:
@@ -701,6 +734,12 @@ def replace_str(text,replace):
         text = text.replace(k,v)
     return text
 
+def indent2(text,fill):
+    if "\n" not in text:
+        return text
+    tail,body = text.split("\n",1)
+    return tail + "\n" + textwrap.indent(body,fill)
+
 def newConfig(paramaters,overwrite=False):
     peerASN = paramaters["peerASN"][2:]
     peerKey = paramaters["peerWG_Pub_Key"]
@@ -711,7 +750,7 @@ def newConfig(paramaters,overwrite=False):
     peerIPV4 = paramaters["peerIPV4"]
     peerIPV6 = paramaters["peerIPV6"]
     peerIPV6LL = paramaters["peerIPV6LL"]
-    noTransit =  paramaters["noTransit"]
+    transitMode =  paramaters["transitMode"]
     MP_BGP = paramaters["MP_BGP"]
     Ext_Nh = paramaters["Ext_Nh"]
     myIPV4 = paramaters["myIPV4"]
@@ -766,22 +805,22 @@ def newConfig(paramaters,overwrite=False):
                                 wg setconf {if_name} {wgconfpath}/{if_name}.conf
                                 ip link set {if_name} up
                                 """)
-    if use_speed_linit:
+    if use_speed_limit:
         wgsh += f"wondershaper {if_name} $WG_SPEED_LIMIT $WG_SPEED_LIMIT || true\n"
     birdPeerV4 = None
     birdPeerV6 = None
     if myIPV4 != None:
         if Ext_Nh == True:
-            wgsh += f"ip addr add {myIPV4}/32 dev {if_name}\n"
+            pass # wgsh += f"ip addr add {myIPV4}/32 dev {if_name}\n"
         elif peerIPV4 != None:
             wgsh += f"ip addr add {myIPV4} peer {peerIPV4} dev {if_name}\n"
             if MP_BGP == False:
                 birdPeerV4 = peerIPV4
         else:
-            wgsh += f"ip addr add {myIPV4}/32 dev {if_name}\n"
+            pass #wgsh += f"ip addr add {myIPV4}/32 dev {if_name}\n"
     
     if peerIPV6LL != None:
-        wgsh += f"ip addr add {myIPV6}/128 dev {if_name}\n"
+        pass #wgsh += f"ip addr add {myIPV6}/128 dev {if_name}\n"
         wgsh += f"ip addr add {myIPV6LL}/64 dev {if_name}\n"
         birdPeerV6 = peerIPV6LL
     elif peerIPV6 != None:
@@ -790,40 +829,120 @@ def newConfig(paramaters,overwrite=False):
         birdPeerV6 = peerIPV6
     
     birdconf = ""
-    enhfeature = ""
+    channel4 = ""
+    channel6 = ""
+    filter4i = ""
+    filter4e = ""
+    filter6i = ""
+    filter6e = ""
+    if Ext_Nh == True:
+        channel4 += "extended next hop on;\n"
+    if transitMode == "Regular":
+        pass
+    elif transitMode == "PeerOnly":
+        filter4i +=  textwrap.dedent(f"""\
+                        if bgp_path.last = {peerASN} then{{
+                            if is_valid_network() && (roa_check(dn42_roa, net, bgp_path.last) = ROA_VALID) then {{
+                                accept;
+                            }}
+                        }}
+                        reject;
+                    """)
+        filter6i += textwrap.dedent(f"""\
+                        if bgp_path.last = {peerASN} then{{
+                            if is_valid_network_v6() && (roa_check(dn42_roa_v6, net, bgp_path.last) = ROA_VALID) then {{
+                                accept;
+                            }}
+                        }}
+                        reject;
+                    """)
+        filter4e +=  textwrap.dedent(f"""\
+                        bgp_community.add((65535,65281));
+                        if bgp_path.last = {myasn} then{{
+                            accept;
+                        }}
+                        reject;
+                    """)
+        filter6e += textwrap.dedent(f"""\
+                        bgp_community.add((65535,65281));
+                        if bgp_path.last = {myasn} then{{
+                            accept;
+                        }}
+                        reject;
+                    """)
+    #########################
+    if filter4i != "":
+        channel4 += textwrap.dedent(f"""\
+                    import filter{{
+                        { indent2(filter4i,"                        ") }
+                    }};
+                    """)
+    if filter4e != "":
+        channel4 += textwrap.dedent(f"""\
+                    export filter{{
+                        { indent2(filter4e,"                        ") }
+                    }};
+                    """)
+    if filter6i != "":
+        channel6 += textwrap.dedent(f"""\
+                    import filter{{
+                        { indent2(filter6i,"                        ") }
+                    }};
+                    """)
+    if filter6e != "":
+        channel6 += textwrap.dedent(f"""\
+                    export filter{{
+                        { indent2(filter6e,"                        ") }
+                    }};
+                    """)
+    if channel4 != "":
+        channel4 = textwrap.dedent(f"""\
+                    ipv4 {{
+                        { indent2(channel4,"                        ") }
+                    }};
+                    """)
+        channel4 = indent2(channel4,"                                            ")
+    if channel6 != "":
+        channel6 = textwrap.dedent(f"""\
+                    ipv6 {{
+                        { indent2(channel6,"                        ") }
+                    }};
+                    """)
+        channel6 = indent2(channel6,"                                            ")
+        
     if MP_BGP == True:
-        filter46 = ""
-        filter64 = ""
-        if Ext_Nh == True:
-            filter64 =               """ipv4 {
-                                            extended next hop on;
-                                        };
-                                        """
+        if peerIPV6 != None or peerIPV6LL != None:
+            birdconf += textwrap.dedent(f"""\
+                                        protocol bgp dn42_{peerName}_v6 from dnpeers {{
+                                            neighbor {birdPeerV6} % '{if_name}' as {peerASN};
+                                            {channel4}
+                                            {channel6}
+                                        }};
+                                        """)
     else:
-        filter46 =                   """ipv6 {
-                                            import none;
-                                            export none;
-                                        };
-                                        """
-        filter64 =                   """ipv4 {
-                                            import none;
-                                            export none;
-                                        };
-                                        """
-    if birdPeerV4 != None:
-        birdconf += textwrap.dedent(f"""\
-                                    protocol bgp dn42_{peerName}_v4 from dnpeers {{
-                                        neighbor {birdPeerV4} % '{if_name}' as {peerASN};
-                                        {filter46}
-                                    }};
-                                    """)
-    if peerIPV6 != None or peerIPV6LL != None:
-        birdconf += textwrap.dedent(f"""\
-                                    protocol bgp dn42_{peerName}_v6 from dnpeers {{
-                                        neighbor {birdPeerV6} % '{if_name}' as {peerASN};
-                                        {filter64}
-                                    }};
-                                    """)
+        if birdPeerV4 != None:
+            birdconf += textwrap.dedent(f"""\
+                                        protocol bgp dn42_{peerName}_v4 from dnpeers {{
+                                            neighbor {birdPeerV4} % '{if_name}' as {peerASN};
+                                            {channel4}
+                                            ipv6 {{
+                                                import none;
+                                                export none;
+                                            }};
+                                        }};
+                                        """)
+        if peerIPV6 != None or peerIPV6LL != None:
+            birdconf += textwrap.dedent(f"""\
+                                        protocol bgp dn42_{peerName}_v6 from dnpeers {{
+                                            neighbor {birdPeerV6} % '{if_name}' as {peerASN};
+                                            ipv4 {{
+                                                import none;
+                                                export none;
+                                            }};
+                                            {channel6}
+                                        }};
+                                        """)
+
                                     
     paramaters = { valid_key: paramaters[valid_key] for valid_key in client_valid_keys }
     paramaters["peer_signature"] = ""
@@ -859,6 +978,14 @@ def saveConfig(new_config):
     print_and_exec_uml(f"{wgconfpath}/{if_name}.sh")
     print_and_exec("birdc configure")
     return None
+
+def initDevice():
+    print_and_exec_uml(f"ip link add dn42-dummy type dummy")
+    print_and_exec_uml(f'ip addr add { my_paramaters["myIPV4"] } dev dn42-dummy')
+    print_and_exec_uml(f'ip addr add { my_paramaters["myIPV6"] } dev dn42-dummy')
+    for thesh in filter(lambda x:x[-3:] == ".sh", os.listdir(wgconfpath)):
+        print_and_exec_uml(wgconfpath + "/" + thesh)
+    
 
 def print_and_exec_uml(command):
     if use_uml_command_for_rootless_router == True:
@@ -916,7 +1043,7 @@ def get_paramaters(paramaters):
     paramaters["hasIPV6LL"]        = get_key_default(paramaters,"hasIPV6LL",False)
     paramaters["peerIPV6LL"]       = get_key_default(paramaters,"peerIPV6LL",None)
     paramaters["myIPV6LL_custom"]  = get_key_default(paramaters,"myIPV6LL_custom",None)
-    paramaters["noTransit"]        = get_key_default(paramaters,"noTransit",False)
+    paramaters["transitMode"]      = get_key_default(paramaters,"transitMode","Regular")
     paramaters["MP_BGP"]           = get_key_default(paramaters,"MP_BGP",True)
     paramaters["Ext_Nh"]           = get_key_default(paramaters,"Ext_Nh",False)
     paramaters["hasHost"]          = get_key_default(paramaters,"hasHost",False)
@@ -1121,6 +1248,8 @@ if __name__ == '__main__':
         ('/', tornado.web.RedirectHandler, {"url": url_prefix}),
         (r"(.*)", My404Handler),
     ])
+    if my_config["init_device"] == True:
+        initDevice()
     server = tornado.httpserver.HTTPServer(app, ssl_options=my_config["ssl_options"] )
     server.listen(my_config["listen_port"],my_config["listen_host"])
     print("Done. Start serving http(s) on " + my_config["listen_host"]+ ":" + str(my_config["listen_port"]))

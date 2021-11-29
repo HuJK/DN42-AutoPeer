@@ -30,5 +30,6 @@
     "wg_port_search_range": [
         "lambda peerASN:20000+int(peerASN[-4:])",
         "lambda peerASN:20000+int(peerASN[-4:]) + 100"
-    ]
+    ],
+    "init_device": true
 }
