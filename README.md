@@ -1,6 +1,13 @@
-Peer with me at DN42 network!!
+## Peer with me at DN42 network!!
 
 https://twdn42.hujk.eu.org/
+
+#### Special thanks to KuskakbeSi
+
+peer with KuskakbeSi:
+https://dn42.kskb.eu.org/
+
+## installition
 
 ```
 pip3 install -r requirement.txt
