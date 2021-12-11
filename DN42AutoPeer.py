@@ -988,6 +988,7 @@ def saveConfig(new_config):
 
 def initDevice():
     print_and_exec_uml(f"ip link add dn42-dummy type dummy")
+    print_and_exec_uml(f"ip link set up dn42-dummy")
     print_and_exec_uml(f'ip addr add { my_paramaters["myIPV4"] } dev dn42-dummy')
     print_and_exec_uml(f'ip addr add { my_paramaters["myIPV6"] } dev dn42-dummy')
     for thesh in filter(lambda x:x[-3:] == ".sh", os.listdir(wgconfpath)):
