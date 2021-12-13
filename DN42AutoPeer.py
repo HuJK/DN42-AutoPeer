@@ -862,15 +862,19 @@ def newConfig(paramaters,overwrite=False):
                     """)
         filter4e +=  textwrap.dedent(f"""\
                         bgp_community.add((65535,65281));
-                        if bgp_path.last = {myasn} then{{
-                            accept;
+                        if bgp_path.last = {myasn} || (is_self_net() && is_valid_network() && source ~ [RTS_STATIC, RTS_BGP]) then{{
+                            if is_valid_network() then{{
+                                accept;
+                            }}
                         }}
                         reject;
                     """)
         filter6e += textwrap.dedent(f"""\
                         bgp_community.add((65535,65281));
-                        if bgp_path.last = {myasn} then{{
-                            accept;
+                        if bgp_path.last = {myasn} || (is_self_net_v6() && is_valid_network_v6() && source ~ [RTS_STATIC, RTS_BGP]) then{{
+                            if is_valid_network_v6() then{{
+                                accept;
+                            }}
                         }}
                         reject;
                     """)
