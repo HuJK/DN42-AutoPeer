@@ -694,9 +694,13 @@ async def check_reg_paramater(paramaters,allow_myIPV6LL_custom=False,alliw_exist
         if paramaters["peerHost"] == None and (my_paramaters["myHost"] == None):
             raise ValueError("Sorry, I don't have a public IP so that your endpoint can't be null.")
         if paramaters["peerHost"] == None or ":" not in paramaters["peerHost"]:
-            raise ValueError("Parse Error, Host must looks like address:port .")
+            raise ValueError("Parse Error, Host must looks like address:port.")
         hostaddr,port = paramaters["peerHost"].rsplit(":",1)
         port = int(port)
+        if hostaddr[0] == "[" and hostaddr[-1] == "]":
+            hostaddr = hostaddr[1:-1]
+        else if ":" in hostaddr:
+             raise ValueError(f"Parse Error, IPv6 Address as endpoint, it should be like [{hostaddr}]:port .")
         addrinfo = socket.getaddrinfo(hostaddr,port)
     else:
         paramaters["peerHost"] = None
