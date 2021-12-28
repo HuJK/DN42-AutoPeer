@@ -699,8 +699,8 @@ async def check_reg_paramater(paramaters,allow_myIPV6LL_custom=False,alliw_exist
         port = int(port)
         if hostaddr[0] == "[" and hostaddr[-1] == "]":
             hostaddr = hostaddr[1:-1]
-        else if ":" in hostaddr:
-             raise ValueError(f"Parse Error, IPv6 Address as endpoint, it should be like [{hostaddr}]:port .")
+        elif ":" in hostaddr:
+             raise ValueError(f"Parse Error, IPv6 Address as endpoint, it should be like [{hostaddr}]:{port}.")
         addrinfo = socket.getaddrinfo(hostaddr,port)
     else:
         paramaters["peerHost"] = None
