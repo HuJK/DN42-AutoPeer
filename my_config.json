@@ -31,5 +31,7 @@
         "lambda peerASN:20000+int(peerASN[-4:])",
         "lambda peerASN:20000+int(peerASN[-4:]) + 100"
     ],
-    "init_device": true
+    "init_device": true,
+    "reset_wgconf_interval": 0,
+    "download_roa_interval": 0
 }

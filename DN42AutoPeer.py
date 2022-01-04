@@ -36,57 +36,90 @@ from tornado.httpclient import HTTPClientError
 import DN42whois 
 from DN42GIT import DN42GIT 
 
+import argparse
+parser = argparse.ArgumentParser()
+parser.add_argument("-e", "--envfile",action='append', help="envfile", type=str)
+parser.add_argument("-c", "--config",action='store', help="envfile", type=str)
+parser.add_argument("-p", "--parms",action='store', help="envfile", type=str)
+args = parser.parse_args()
+envs = {}
+if args.envfile:
+    for efs in args.envfile:
+        es = open(efs).read().split("\n")
+        for e in es:
+            if "=" in e:
+                k,v = e.split("=",1)
+                os.environ[k] = v
+    
+confpath = "my_config.json"
+parmpath = "my_parameters.json"
+if args.config:
+    confpath = args.config
+if args.parms:
+    parmpath = args.parms
+    
 print("Starting...")
 os.environ['GIT_SSH_COMMAND'] = "ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no"
 
-my_paramaters = json.loads(open("my_parameters.json").read())
-my_config = json.loads(open("my_config.json").read())
+my_paramaters = json.loads(open(parmpath).read())
+my_config = json.loads(open(confpath).read())
 
 if my_config["jwt_secret"] == None:
     my_config["jwt_secret"] = ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(32))
     # open("my_config.json","w").write(json.dumps(my_config,indent=4,ensure_ascii=False))
+
 jwt_secret = my_config["jwt_secret"]
 
-def try_read_env(params,pkey,ekey,default=None):
+def try_read_env(params,pkey,ekey,ValType=str,default=None):
     if ekey in os.environ:
-        if default == None:
-            params[pkey] = os.environ[ekey]
-        elif type(default) == bool:
+        if ValType == bool:
             params[pkey] = os.environ[ekey].lower() == "true"
+        elif ValType == "json":
+            params[pkey] = json.loads( os.environ[ekey] )
         else:
-            params[pkey] = type(default)(os.environ[ekey])
+            params[pkey] = ValType(os.environ[ekey])
     if pkey not in params:
         if default == None:
-            raise ValueError("default for " + pkey + "not set")
+            raise ValueError("default for " + pkey + " are not set")
         params[pkey] = default
 
 use_speed_limit = False
 if "WG_SPEED_LIMIT" in os.environ:
-    use_speed_limit = True
+    try:
+        if int(os.environ["WG_SPEED_LIMIT"]) > 0:
+            use_speed_limit = True
+    except:
+        pass
 
 try_read_env(my_paramaters,"myIPV4",'DN42_IPV4')
 try_read_env(my_paramaters,"myIPV6",'DN42_IPV6')
 try_read_env(my_paramaters,"myIPV6LL",'DN42_IPV6_LL')
+try_read_env(my_paramaters,"myHost",'DN42AP_ENDPOINT')
 try_read_env(my_paramaters,"myHostDisplay",'DN42AP_HOST_DISPLAY')
 try_read_env(my_paramaters,"myASN",'DN42_E_AS')
 try_read_env(my_paramaters,"myContact",'DN42_CONTACT')
 try_read_env(my_paramaters,"myWG_Pub_Key",'WG_PUBKEY')
+try_read_env(my_paramaters,"allowExtNh",'DN42AP_ALLOW_ENH',bool,False)
 try_read_env(my_config,"html_title",'DN42AP_TITLE')
+try_read_env(my_config,"git_repo_url",'DN42AP_GIT_REPO_URL')
+try_read_env(my_config,"listen_host",'DN42AP_LISTEN_HOST')
 try_read_env(my_config,"listen_port",'DN42AP_PORT')
 try_read_env(my_config,"myWG_Pri_Key",'WG_PRIVKEY')
+try_read_env(my_config,"urlprefix",'DN42AP_URLPREFIX')
 try_read_env(my_config,"wgconfpath",'DN42AP_WGCONFPATH')
 try_read_env(my_config,"bdconfpath",'DN42AP_BIRDCONFPATH')
-try_read_env(my_config,"admin_mnt",'DN42AP_ADMIN')
-try_read_env(my_config,"urlprefix",'DN42AP_URLPREFIX')
 try_read_env(my_config,"gitsyncpath",'DN42AP_GIT_SYNC_PATH')
-try_read_env(my_config,"git_repo_url",'DN42AP_GIT_REPO_URL')
-try_read_env(my_config,"init_device",'DN42AP_INIT_DEVICE',True)
+try_read_env(my_config,"admin_mnt",'DN42AP_ADMIN')
+try_read_env(my_config,"wg_port_search_range",'DN42AP_PORT_RANGE',"json")
+try_read_env(my_config,"init_device",'DN42AP_INIT_DEVICE',bool)
+try_read_env(my_config,"reset_wgconf_interval",'DN42AP_RESET_WGCONF',int,0)
+try_read_env(my_config,"download_roa_interval",'DN42AP_UPDATE_ROA',int,0)
 
 RRstate_repo = DN42GIT(my_config["gitsyncpath"])
 
-use_uml_command_for_rootless_router=False
-if "UML" in os.environ and os.environ['UML'] == "1":
-    use_uml_command_for_rootless_router=True
+use_remote_command = ""
+if "DN42AP_REMOTE_COMMAND" in os.environ:
+    use_remote_command = os.environ['DN42AP_REMOTE_COMMAND']
 
 def es2none(p):
     if p == "":
@@ -112,7 +145,8 @@ bdconfpath = my_config["bdconfpath"]
 
 pathlib.Path(wgconfpath + "/peerinfo").mkdir(parents=True, exist_ok=True)
 
-client_valid_keys = ["peer_plaintext","peer_pub_key_pgp","peer_signature", "peerASN", "hasIPV4", "peerIPV4", "hasIPV6", "peerIPV6", "hasIPV6LL", "peerIPV6LL","MP_BGP","Ext_Nh", "hasHost", "peerHost", "peerWG_Pub_Key","peerWG_PS_Key", "peerContact", "PeerID","myIPV6LL_custom","transitMode"]
+client_valid_keys = ["peer_plaintext","peer_pub_key_pgp","peer_signature", "peerASN", "hasIPV4", "peerIPV4", "hasIPV6", "peerIPV6", "hasIPV6LL", "peerIPV6LL","MP_BGP","Ext_Nh", "hasHost", "peerHost", "peerWG_Pub_Key","peerWG_PS_Key", "peerContact", "PeerID","myIPV6LL","customDevice","myWG_Pri_Key","transitMode","myWG_MTU"]
+client_valid_keys_admin_only = ["customDevice","myWG_Pri_Key"]
 dn42repo_base = my_config["dn42repo_base"]
 DN42_valid_ipv4s = my_config["DN42_valid_ipv4s"]
 DN42_valid_ipv6s = my_config["DN42_valid_ipv6s"]
@@ -617,7 +651,7 @@ def check_valid_ip_range(IPclass,IPranges,ip,name):
     raise ValueError(ip + " is not a valid " + name + " address")
     
 
-async def check_reg_paramater(paramaters,allow_myIPV6LL_custom=False,alliw_exists=False):
+async def check_reg_paramater(paramaters,alliw_exists=False):
     if (paramaters["hasIPV4"] or paramaters["hasIPV6"] or paramaters["hasIPV6LL"]) == False:
         raise ValueError("You can't peer without any IP.")
     mntner,admin = await get_info_from_asn(paramaters["peerASN"])
@@ -630,7 +664,7 @@ async def check_reg_paramater(paramaters,allow_myIPV6LL_custom=False,alliw_exist
             originASN = "nobody"
         else:
             originASN = peerIPV4_info["origin"][0]
-            
+
         origin_check_pass = False
         for origin in peerIPV4_info["origin"]:
             if origin == paramaters["peerASN"]:
@@ -706,18 +740,12 @@ async def check_reg_paramater(paramaters,allow_myIPV6LL_custom=False,alliw_exist
         paramaters["peerHost"] = None
     if paramaters["peerWG_PS_Key"] == "":
         paramaters["peerWG_PS_Key"] == None
-    
-    if paramaters["myIPV6LL_custom"] != None and paramaters["myIPV6LL_custom"] != "":
-        if allow_myIPV6LL_custom == False:
-            raise ValueError("myIPV6LL_custom not allowed")
-        else:
-            paramaters["myIPV6LL"] = paramaters["myIPV6LL_custom"]
-    
-    peerKey = paramaters["peerWG_Pub_Key"]
-    if peerKey == None or len(peerKey) == 0:
-        raise ValueError('"Your WG Public Key" can\'t be null.')
-    if peerKey == paramaters["myWG_Pub_Key"]:
-        raise ValueError('You can\'t use my wireguard public key as your wireguard public key.')
+    if paramaters["customDevice"] == None:
+        peerKey = paramaters["peerWG_Pub_Key"]
+        if peerKey == None or len(peerKey) == 0:
+            raise ValueError('"Your WG Public Key" can\'t be null.')
+        if peerKey == paramaters["myWG_Pub_Key"]:
+            raise ValueError('You can\'t use my wireguard public key as your wireguard public key.')
     if alliw_exists == False:
         RRstate_repo.pull()
         conf_dir = wgconfpath + "/peerinfo"
@@ -744,6 +772,125 @@ def indent2(text,fill):
     tail,body = text.split("\n",1)
     return tail + "\n" + textwrap.indent(body,fill)
 
+def get_peeronly_filter(io,af,peerASN,myASN,noExport=True):
+    commadd = ""
+    if noExport == True:
+        commadd = "bgp_community.add((65535,65281));"
+    if io == "i":
+        if af == 4:
+            return textwrap.dedent(f"""\
+                        if is_valid_network() && bgp_path.last = {peerASN} then {{
+                            if (roa_check(dn42_roa, net, bgp_path.last) != ROA_VALID) then {{
+                                print "[dn42] ROA check failed from ",bgp_path.first , " ifname:", ifname ," for ", net, " ASN:", bgp_path.last;
+                                reject;
+                            }}
+                            {commadd}
+                            accept;
+                        }}
+                        reject;
+                    """)
+        elif af == 6:
+            return textwrap.dedent(f"""\
+                        if is_valid_network_v6() && bgp_path.last = {peerASN} then {{
+                            if (roa_check(dn42_roa_v6, net, bgp_path.last) != ROA_VALID) then {{
+                                print "[dn42] ROA check failed from ",bgp_path.first , " ifname:", ifname ," for ", net, " ASN:", bgp_path.last;
+                                reject;
+                            }}
+                            {commadd}
+                            accept;
+                        }}
+                        reject;
+                    """)
+    if io == "o":
+        if af == 4:
+            return textwrap.dedent(f"""\
+                        if (bgp_path.last = {myASN} && (roa_check(dn42_roa, net, bgp_path.last) = ROA_VALID)) || (is_self_net() && is_valid_network() && source ~ [RTS_STATIC, RTS_BGP]) then{{
+                            if is_valid_network() then{{
+                                {commadd}
+                                accept;
+                            }}
+                        }}
+                        reject;
+                    """)
+        elif af == 6:
+            return textwrap.dedent(f"""\
+                        if (bgp_path.last = {myASN} && (roa_check(dn42_roa_v6, net, bgp_path.last) = ROA_VALID)) || (is_self_net_v6() && is_valid_network_v6() && source ~ [RTS_STATIC, RTS_BGP]) then{{
+                            if is_valid_network_v6() then{{
+                                {commadd}
+                                accept;
+                            }}
+                        }}
+                        reject;
+                    """)
+def get_transit_filter(io,af,peerASN,myASN,noExport=True):
+    commadd = ""
+    if noExport == True:
+        commadd = "bgp_community.add((65535,65281));"
+    if io == "i":
+        if af == 4:
+            return textwrap.dedent(f"""\
+                        {commadd}
+                        if is_valid_network() && !is_self_net() then {{
+                            if (roa_check(dn42_roa, net, bgp_path.last) != ROA_VALID) then {{
+                                print "[dn42] ROA check failed from ",bgp_path.first , " ifname:", ifname ," for ", net, " ASN:", bgp_path.last;
+                                reject;
+                            }} 
+                            {commadd}
+                            accept;
+                        }}
+                        reject;
+                    """)
+        elif af == 6:
+            return textwrap.dedent(f"""\
+                        {commadd}
+                        if is_valid_network_v6() && !is_self_net_v6() then {{
+                            if (roa_check(dn42_roa_v6, net, bgp_path.last) != ROA_VALID) then {{
+                                print "[dn42] ROA check failed from ",bgp_path.first , " ifname:", ifname ," for ", net, " ASN ", bgp_path.last;
+                                reject;
+                            }} 
+                            {commadd}
+                            accept;
+                        }}
+                        reject;
+                    """)
+    if io == "o":
+        if af == 4:
+            return textwrap.dedent(f"""\
+                        {commadd}
+                        if is_valid_network() && source ~ [RTS_STATIC, RTS_BGP] then {{
+                            accept; 
+                        }}
+                        reject;
+                    """)
+        elif af == 6:
+            return textwrap.dedent(f"""\
+                        {commadd}
+                        if is_valid_network_v6() && source ~ [RTS_STATIC, RTS_BGP] then {{
+                            accept; 
+                        }}
+                        reject;
+                    """)
+def get_ix_filter(io,af,peerASN,myASN,noExport=True):
+    if io == "i":
+        if af == 4:
+            return textwrap.dedent(f"""\
+                        if (bgp_path.last = bgp_path.first && (roa_check(dn42_roa, net, bgp_path.last) = ROA_VALID)) then{{
+                            if is_valid_network() then{{
+                                accept;
+                            }}
+                        }}
+                        reject;
+                    """)
+        elif af == 6:
+            return textwrap.dedent(f"""\
+                        if (bgp_path.last = bgp_path.first && (roa_check(dn42_roa_v6, net, bgp_path.last) = ROA_VALID)) then{{
+                            if is_valid_network_v6() then{{
+                                accept;
+                            }}
+                        }}
+                        reject;
+                    """)
+
 def newConfig(paramaters,overwrite=False):
     peerASN = paramaters["peerASN"][2:]
     peerKey = paramaters["peerWG_Pub_Key"]
@@ -762,8 +909,10 @@ def newConfig(paramaters,overwrite=False):
     myIPV6LL = paramaters["myIPV6LL"]
     myhost = paramaters["myHost"]
     myasn = paramaters["myASN"][2:]
-    privkey = my_config["myWG_Pri_Key"]
+    privkey = paramaters["myWG_Pri_Key"]
     publkey = paramaters["myWG_Pub_Key"]
+    mtu = paramaters["myWG_MTU"]
+    customDevice = paramaters["customDevice"]
     
     if peerName == None or len(peerName) == 0:
         raise ValueError('"Your Telegram ID or e-mail" can\'t be null.')
@@ -773,6 +922,16 @@ def newConfig(paramaters,overwrite=False):
     if peerID == None:
         port_range = [eval(my_config["wg_port_search_range"][0])(peerASN) , eval(my_config["wg_port_search_range"][1])(peerASN)]
         for p in range(*port_range):
+            try:
+                sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) 
+                sock.bind(("0.0.0.0", p))
+                sock.close()
+            except Exception as e:
+                try:
+                    sock.close()
+                except Exception as e:
+                    pass
+                continue
             if p not in portlist:
                 peerID = p
                 break
@@ -808,7 +967,12 @@ def newConfig(paramaters,overwrite=False):
                                 ip link add dev {if_name} type wireguard
                                 wg setconf {if_name} {wgconfpath}/{if_name}.conf
                                 ip link set {if_name} up
+                                ip link set mtu {mtu} dev {if_name}
                                 """)
+    if customDevice != None:
+        if_name = customDevice
+    
+
     if use_speed_limit:
         wgsh += f"wondershaper {if_name} $WG_SPEED_LIMIT $WG_SPEED_LIMIT || true\n"
     birdPeerV4 = None
@@ -843,45 +1007,33 @@ def newConfig(paramaters,overwrite=False):
     filter4e = ""
     filter6i = ""
     filter6e = ""
+
     if Ext_Nh == True:
         channel4 += "extended next hop on;\n"
-    if transitMode == "Regular":
+    if transitMode == "Regular" or transitMode == "Private Peering":
         pass
-    elif transitMode == "PeerOnly":
-        filter4i +=  textwrap.dedent(f"""\
-                        if bgp_path.last = {peerASN} then{{
-                            if is_valid_network() && (roa_check(dn42_roa, net, bgp_path.last) = ROA_VALID) then {{
-                                accept;
-                            }}
-                        }}
-                        reject;
-                    """)
-        filter6i += textwrap.dedent(f"""\
-                        if bgp_path.last = {peerASN} then{{
-                            if is_valid_network_v6() && (roa_check(dn42_roa_v6, net, bgp_path.last) = ROA_VALID) then {{
-                                accept;
-                            }}
-                        }}
-                        reject;
-                    """)
-        filter4e +=  textwrap.dedent(f"""\
-                        bgp_community.add((65535,65281));
-                        if bgp_path.last = {myasn} || (is_self_net() && is_valid_network() && source ~ [RTS_STATIC, RTS_BGP]) then{{
-                            if is_valid_network() then{{
-                                accept;
-                            }}
-                        }}
-                        reject;
-                    """)
-        filter6e += textwrap.dedent(f"""\
-                        bgp_community.add((65535,65281));
-                        if bgp_path.last = {myasn} || (is_self_net_v6() && is_valid_network_v6() && source ~ [RTS_STATIC, RTS_BGP]) then{{
-                            if is_valid_network_v6() then{{
-                                accept;
-                            }}
-                        }}
-                        reject;
-                    """)
+    elif transitMode == "PeerOnly" or transitMode == "Public Peering":
+        filter4i += get_peeronly_filter("i",4,peerASN,myasn,True)
+        filter6i += get_peeronly_filter("i",6,peerASN,myasn,True)
+        filter4e += get_peeronly_filter("o",4,peerASN,myasn,True)
+        filter6e += get_peeronly_filter("o",6,peerASN,myasn,True)
+    elif transitMode == "Upstream" or transitMode == "Transit Providers":
+        filter4i += get_transit_filter("i",4,peerASN,myasn,True)
+        filter6i += get_transit_filter("i",6,peerASN,myasn,True)
+        filter4e += get_peeronly_filter("o",4,peerASN,myasn,False)
+        filter6e += get_peeronly_filter("o",6,peerASN,myasn,False)
+    elif transitMode == "Downstream" or transitMode == "Customer":
+        filter4i += get_peeronly_filter("i",4,peerASN,myasn,False)
+        filter6i += get_peeronly_filter("i",6,peerASN,myasn,False)
+        filter4e += get_transit_filter("o",4,peerASN,myasn,True)
+        filter6e += get_transit_filter("o",6,peerASN,myasn,True)
+    elif transitMode == "IX":
+        filter4i += get_ix_filter("i",4,peerASN,myasn,False)
+        filter6i += get_ix_filter("i",6,peerASN,myasn,False)
+        filter4e += get_peeronly_filter("o",4,peerASN,myasn,False)
+        filter6e += get_peeronly_filter("o",6,peerASN,myasn,False)
+    else:
+        raise ValueError("Unknow transitMode: " + transitMode)
     #########################
     if filter4i != "":
         channel4 += textwrap.dedent(f"""\
@@ -963,19 +1115,24 @@ def newConfig(paramaters,overwrite=False):
     paramaters["peer_signature"] = ""
     paramaters["peer_plaintext"] = ""
     paramaters["peerName"] = peerName
-    return {
-        "config":{
+    if customDevice == None:
+        retconfig = {
             f"{wgconfpath}/{if_name}.conf": wgconf,
             f"{wgconfpath}/{if_name}.sh": wgsh,
-            f"{wgconfpath}/peerinfo/{peerID}.yaml": yaml.dump(paramaters),
-            f"{bdconfpath}/{if_name}.conf": birdconf
-        },
+        }
+    else:
+        retconfig = {}
+    retconfig[f"{wgconfpath}/peerinfo/{peerID}.yaml"] = yaml.dump(paramaters)
+    retconfig[f"{bdconfpath}/{if_name}.conf"] = birdconf
+    return {
+        "config":retconfig,
         "if_name": if_name,
         "paramaters": paramaters,
     }
 
 def saveConfig(new_config):
     RRstate_repo.pull()
+    runsh = False
     for path,content in new_config["config"].items():
         print("================================")
         print(path)
@@ -987,35 +1144,35 @@ def saveConfig(new_config):
             conffd.write(content)
             if content.startswith("#!"):
                 os.chmod(path, 0o755)
+            runsh = True
         print("================================")
     if_name = new_config["if_name"]
     RRstate_repo.push(f'{node_name} peer add {if_name}')
-    print_and_exec_uml(f"{wgconfpath}/{if_name}.sh")
+    if runsh:
+        print_and_exec(f"{wgconfpath}/{if_name}.sh")
     print_and_exec("birdc configure")
     return None
 
 def initDevice():
-    print_and_exec_uml(f"ip link add dn42-dummy type dummy")
-    print_and_exec_uml(f"ip link set up dn42-dummy")
-    print_and_exec_uml(f'ip addr add { my_paramaters["myIPV4"] } dev dn42-dummy')
-    print_and_exec_uml(f'ip addr add { my_paramaters["myIPV6"] } dev dn42-dummy')
+    print_and_exec(f"ip link add dn42-dummy type dummy")
+    print_and_exec(f"ip link set up dn42-dummy")
+    print_and_exec(f'ip addr add { my_paramaters["myIPV4"] } dev dn42-dummy')
+    print_and_exec(f'ip addr add { my_paramaters["myIPV6"] } dev dn42-dummy')
     for thesh in filter(lambda x:x[-3:] == ".sh", os.listdir(wgconfpath)):
-        print_and_exec_uml(wgconfpath + "/" + thesh)
+        print_and_exec(wgconfpath + "/" + thesh)
     
-
-def print_and_exec_uml(command):
-    if use_uml_command_for_rootless_router == True:
-        command = f'echo {shlex.quote(command + "; exit")} | nc 127.0.0.1 2226'
-    print(command)
-    os.system(command)
-
 def print_and_exec(command):
+    if use_remote_command != "":
+        command = f'echo {shlex.quote(command + "; exit")} | nc {use_remote_command}'
     print(command)
     os.system(command)
                                     
 def print_and_rm(file):
     print("rm " + file)
-    os.remove(file)
+    try:
+        os.remove(file)
+    except Exception as e:
+        print(e)
 
 def print_and_rmrf(tree):
     print("rm -rf " + tree)
@@ -1029,13 +1186,17 @@ def deleteConfig(peerID,peerName):
     print_and_rm(f"{wgconfpath}/peerinfo/{peerID}.yaml")
     print_and_rm(f"{bdconfpath}/{if_name}.conf")
     RRstate_repo.push(f'{node_name} peer del {if_name}')
-    print_and_exec_uml(f"ip link del {if_name}")
+    print_and_exec(f"ip link del {if_name}")
     print_and_exec("birdc configure")
     return None
 
-def get_key_default(D,k,d):
-    if k in D and D[k] != "":
+def get_key_default(D,k,d,ValType=str):
+    if k in D and D[k] != "" and D[k] != None:
         return D[k]
+        if ValType == bool:
+            params[pkey] = os.environ[ekey].lower() == "true"
+        else:
+            params[pkey] = ValType(os.environ[ekey])
     return d
 
 def qsd2d(qsd):
@@ -1046,8 +1207,13 @@ def isFormTrue(inp):
         return True
     return False
 
-def get_paramaters(paramaters):
+def get_paramaters(paramaters,isAdmin=False):
     action                         = get_key_default(paramaters,"action","OK")
+    paramaters = { valid_key: paramaters[valid_key] for valid_key in client_valid_keys if (valid_key in paramaters)  }
+    if not isAdmin:
+        for k in client_valid_keys_admin_only:
+            if k in paramaters:
+                del paramaters[k]
     paramaters["peer_plaintext"]   = get_key_default(paramaters,"peer_plaintext","")
     paramaters["peer_pub_key_pgp"] = get_key_default(paramaters,"peer_pub_key_pgp","")
     paramaters["peer_signature"]   = get_key_default(paramaters,"peer_signature","")
@@ -1058,8 +1224,11 @@ def get_paramaters(paramaters):
     paramaters["peerIPV6"]         = get_key_default(paramaters,"peerIPV6",None)
     paramaters["hasIPV6LL"]        = get_key_default(paramaters,"hasIPV6LL",False)
     paramaters["peerIPV6LL"]       = get_key_default(paramaters,"peerIPV6LL",None)
-    paramaters["myIPV6LL_custom"]  = get_key_default(paramaters,"myIPV6LL_custom",None)
+    paramaters["myIPV6LL"]         = get_key_default(paramaters,"myIPV6LL",my_paramaters["myIPV6LL"])
+    paramaters["myWG_Pri_Key"]     = get_key_default(paramaters,"myWG_Pri_Key",my_config["myWG_Pri_Key"])
+    paramaters["myWG_MTU"]         = get_key_default(paramaters,"myWG_MTU",1280,int)
     paramaters["transitMode"]      = get_key_default(paramaters,"transitMode","Regular")
+    paramaters["customDevice"]     = get_key_default(paramaters,"customDevice",None)
     paramaters["MP_BGP"]           = get_key_default(paramaters,"MP_BGP",True)
     paramaters["Ext_Nh"]           = get_key_default(paramaters,"Ext_Nh",False)
     paramaters["hasHost"]          = get_key_default(paramaters,"hasHost",False)
@@ -1074,8 +1243,8 @@ def get_paramaters(paramaters):
     paramaters["MP_BGP"] = isFormTrue(paramaters["MP_BGP"])
     paramaters["Ext_Nh"] = isFormTrue(paramaters["Ext_Nh"])
     paramaters["hasHost"] = isFormTrue(paramaters["hasHost"])
-    paramaters = { valid_key: paramaters[valid_key] for valid_key in client_valid_keys }
-    paramaters = {**paramaters, **my_paramaters} 
+
+    paramaters = {**my_paramaters,**paramaters} 
     return action , paramaters
     
 async def action(paramaters):
@@ -1083,7 +1252,7 @@ async def action(paramaters):
     try:
         try:
             if paramaters["PeerID"] != None:
-                if int(paramaters["PeerID"]) < 0 or int(paramaters["PeerID"]) > 65535:
+                if int(paramaters["PeerID"]) < 0:
                     raise ValueError("Invalid PeerID")
         except Exception as e:
             filename = paramaters["PeerID"] + ".yaml"

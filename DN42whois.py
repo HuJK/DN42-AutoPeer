@@ -132,6 +132,7 @@ class git_whois():
     async def query(self,query):
         query = query.strip()
         if time.time() - self.pulltime > self.cooldown:
+            print(self.repo.remotes.origin)
             self.repo.remotes.origin.pull()
             self.pulltime = time.time()
         query = add_prefix(query)
