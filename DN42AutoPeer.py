@@ -26,6 +26,7 @@ import tornado.web
 import tornado.gen
 from git import Repo
 import tornado.ioloop
+import multiprocessing
 from urllib import parse
 import tornado.httpclient
 from Crypto.PublicKey import RSA
@@ -51,8 +52,8 @@ if args.envfile:
                 k,v = e.split("=",1)
                 os.environ[k] = v
     
-confpath = "my_config.json"
-parmpath = "my_parameters.json"
+confpath = "my_config.yaml"
+parmpath = "my_parameters.yaml"
 if args.config:
     confpath = args.config
 if args.parms:
@@ -61,12 +62,12 @@ if args.parms:
 print("Starting...")
 os.environ['GIT_SSH_COMMAND'] = "ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no"
 
-my_paramaters = json.loads(open(parmpath).read())
-my_config = json.loads(open(confpath).read())
+my_paramaters = yaml.load(open(parmpath).read(),Loader=yaml.Loader)
+my_config = yaml.load(open(confpath).read(),Loader=yaml.Loader)
 
 if my_config["jwt_secret"] == None:
     my_config["jwt_secret"] = ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(32))
-    # open("my_config.json","w").write(json.dumps(my_config,indent=4,ensure_ascii=False))
+    # open("confpath","w").write(yaml.dump(my_config))
 
 jwt_secret = my_config["jwt_secret"]
 
@@ -110,10 +111,9 @@ try_read_env(my_config,"wgconfpath",'DN42AP_WGCONFPATH')
 try_read_env(my_config,"bdconfpath",'DN42AP_BIRDCONFPATH')
 try_read_env(my_config,"gitsyncpath",'DN42AP_GIT_SYNC_PATH')
 try_read_env(my_config,"admin_mnt",'DN42AP_ADMIN')
-try_read_env(my_config,"wg_port_search_range",'DN42AP_PORT_RANGE',"json")
+try_read_env(my_config,"wg_port_search_range",'DN42AP_PORT_RANGE',str)
 try_read_env(my_config,"init_device",'DN42AP_INIT_DEVICE',bool)
 try_read_env(my_config,"reset_wgconf_interval",'DN42AP_RESET_WGCONF',int,0)
-try_read_env(my_config,"download_roa_interval",'DN42AP_UPDATE_ROA',int,0)
 
 RRstate_repo = DN42GIT(my_config["gitsyncpath"])
 
@@ -892,7 +892,7 @@ def get_ix_filter(io,af,peerASN,myASN,noExport=True):
                     """)
 
 def newConfig(paramaters,overwrite=False):
-    peerASN = paramaters["peerASN"][2:]
+    peerASN = int(paramaters["peerASN"][2:])
     peerKey = paramaters["peerWG_Pub_Key"]
     peerPSK = paramaters["peerWG_PS_Key"]
     peerName = paramaters["peerContact"]
@@ -920,8 +920,8 @@ def newConfig(paramaters,overwrite=False):
     portlist = list(sorted(map(lambda x:int(x.split(".")[0]),filter(lambda x:x[-4:] == "yaml", os.listdir(wgconfpath + "/peerinfo")))))
     # portlist=[23001, 23002, 23003,23004,23005,23006,23007,23008,23009,23088]
     if peerID == None:
-        port_range = [eval(my_config["wg_port_search_range"][0])(peerASN) , eval(my_config["wg_port_search_range"][1])(peerASN)]
-        for p in range(*port_range):
+        port_range = eval(my_config["wg_port_search_range"])
+        for p in port_range:
             try:
                 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) 
                 sock.bind(("0.0.0.0", p))
@@ -931,10 +931,13 @@ def newConfig(paramaters,overwrite=False):
                     sock.close()
                 except Exception as e:
                     pass
+                print(f"Try peer ID:{p} failed, reason:{e}")
                 continue
             if p not in portlist:
                 peerID = p
+                print("Select peer ID:", peerID)
                 break
+            print(f"Try peer ID:{p} failed, reason: exists in portlist")
     else:
         peerID = int(peerID)
     if peerID == None:
@@ -1160,6 +1163,28 @@ def initDevice():
     print_and_exec(f'ip addr add { my_paramaters["myIPV6"] } dev dn42-dummy')
     for thesh in filter(lambda x:x[-3:] == ".sh", os.listdir(wgconfpath)):
         print_and_exec(wgconfpath + "/" + thesh)
+def syncWG():
+    interval = my_config["reset_wgconf_interval"]
+    print("Sync WG interval:",interval)
+    if interval <= 0:
+        return
+    conf_dir = wgconfpath + "/peerinfo"
+    while True:
+        time.sleep(interval)
+        if os.path.isdir(conf_dir): #Check this node hasn't peer with us before
+            for conf_file in os.listdir(conf_dir):
+                if conf_file.endswith(".yaml") and os.path.isfile(f"{conf_dir}/{conf_file}"):
+                    conf = yaml.load(open(f"{conf_dir}/{conf_file}").read(),Loader=yaml.SafeLoader)
+                    if conf["customDevice"] != None:
+                        continue
+                    if conf["peerWG_Pub_Key"] == None:
+                        continue
+                    if conf["peerHost"] == None:
+                        continue
+                    ifname = "dn42-" + conf["peerName"]
+                    peerpubkey = conf["peerWG_Pub_Key"]
+                    peerendpoint = conf["peerHost"]
+                    print_and_exec(f"wg set {shlex.quote(ifname)} peer {shlex.quote(peerpubkey)} endpoint {shlex.quote(peerendpoint)}")
     
 def print_and_exec(command):
     if use_remote_command != "":
@@ -1435,6 +1460,8 @@ if __name__ == '__main__':
     ])
     if my_config["init_device"] == True:
         initDevice()
+    syncwg = multiprocessing.Process(target=syncWG, args=())
+    syncwg.start()
     server = tornado.httpserver.HTTPServer(app, ssl_options=my_config["ssl_options"] )
     server.listen(my_config["listen_port"],my_config["listen_host"])
     print("Done. Start serving http(s) on " + my_config["listen_host"]+ ":" + str(my_config["listen_port"]))
