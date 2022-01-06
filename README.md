@@ -1,6 +1,6 @@
 ## Peer with me at DN42 network!!
 
-https://twdn42.hujk.eu.org/
+https://dn42.whojk.com/
 
 #### Special thanks to KuskakbeSi
 
