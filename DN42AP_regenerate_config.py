@@ -4,9 +4,8 @@ import yaml
 import time
 import asyncio
 import pathlib
-import DN42AutoPeer
 from distutils.dir_util import copy_tree
-
+import DN42AutoPeer
 
 conf_dir = DN42AutoPeer.wgconfpath + "/peerinfo"
 
@@ -51,10 +50,8 @@ async def main():
     for old_conf_file in os.listdir(conf_dir):
         if old_conf_file.endswith(".yaml") and os.path.isfile(f"{conf_dir}/{old_conf_file}"):
             old_conf = yaml.load(open(f"{conf_dir}/{old_conf_file}").read(),Loader=yaml.SafeLoader)
-            paramaters = {}
-            action , paramaters = DN42AutoPeer.get_paramaters(paramaters)
-            paramaters = {**paramaters,**old_conf}
-            paramaters = await DN42AutoPeer.check_reg_paramater(paramaters,allow_myIPV6LL_custom=True,alliw_exists=True)
+            action , paramaters = DN42AutoPeer.get_paramaters(old_conf,isAdmin=True)
+            paramaters = await DN42AutoPeer.check_reg_paramater(paramaters,alliw_exists=True)
             try:
                 new_config = DN42AutoPeer.newConfig(paramaters,overwrite=True)
             except Exception as e:
