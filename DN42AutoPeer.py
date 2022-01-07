@@ -97,6 +97,7 @@ try_read_env(my_paramaters,"myIPV6",'DN42_IPV6')
 try_read_env(my_paramaters,"myIPV6LL",'DN42_IPV6_LL')
 try_read_env(my_paramaters,"myHost",'DN42AP_ENDPOINT')
 try_read_env(my_paramaters,"myHostDisplay",'DN42AP_HOST_DISPLAY')
+try_read_env(my_paramaters,"myHostHidden",'DN42AP_HOST_HIDDEN',bool,False)
 try_read_env(my_paramaters,"myASN",'DN42_E_AS')
 try_read_env(my_paramaters,"myContact",'DN42_CONTACT')
 try_read_env(my_paramaters,"myWG_Pub_Key",'WG_PUBKEY')
@@ -156,11 +157,11 @@ whois_query = whois.query
 
 method_hint = {"ssh-rsa":"""<h4>Paste following command to your terminal to get your signature.</h4>
 <code>
-echo -n "{text2sign}" | ssh-keygen -Y sign -f ~/.ssh/id_rsa -n dn42ap
+echo -n "{text2sign}" | ssh-keygen -Y sign -n dn42ap -f ~/.ssh/id_rsa
 </code>""",
 "ssh-ed25519":"""<h4>Paste following command to your terminal to get your signature.</h4>
 <code>
-echo -n "{text2sign}" | ssh-keygen -Y sign -f ~/.ssh/id_ed25519 -n dn42ap
+echo -n "{text2sign}" | ssh-keygen -Y sign -n dn42ap -f ~/.ssh/id_ed25519
 </code>""",
 "pgp-fingerprint": """<h4>Paste following command to your terminal to get your PGP public key and signature.</h4>
 <code>
@@ -192,7 +193,7 @@ async def get_signature_html(baseURL,paramaters):
     except Exception as e:
         peerADMname = ""
     methods = await get_auth_method(peerMNT, peerADM)
-    text2sign = jwt.encode({'ASN': peerASN, "exp":datetime.datetime.utcnow() + datetime.timedelta(minutes = 5) }, jwt_secret, algorithm='HS256')
+    text2sign = jwt.encode({'ASN': peerASN, "exp":datetime.datetime.utcnow() + datetime.timedelta(minutes = 30) }, jwt_secret, algorithm='HS256')
     methods_class = {"Supported":{},"Unsupported":{}}
     for m,v in methods:
         if m in method_hint:
@@ -272,7 +273,7 @@ async def get_signature_html(baseURL,paramaters):
 
 
 
-def get_html(paramaters,peerSuccess=False):
+async def get_html(paramaters,peerSuccess=False):
     peer_plaintext = paramaters["peer_plaintext"]
     peer_pub_key_pgp = paramaters["peer_pub_key_pgp"]
     peer_signature = paramaters["peer_signature"]
@@ -333,7 +334,17 @@ def get_html(paramaters,peerSuccess=False):
         hasHost_Readonly = 'onclick="alert(\'Sorry, I don\\\'t have a public IP so that your endpoint can\\\'t be null.\');return false;";'
         myHostDisplay = paramaters["myHostDisplay"]
     else:
-        myHostDisplay = myHost + ":" + str(PeerID) if PeerID != None else "{Not assign yet, Register first}"
+        myHostDisplay = my_paramaters["myHostDisplay"] + ":"
+        if my_paramaters["myHostHidden"]:
+            if peer_signature != "" or peer_signature != None:
+                mntner = await verify_user_signature(paramaters["peerASN"],paramaters["peer_plaintext"],paramaters["peer_pub_key_pgp"],peer_signature)
+                myHostDisplay = myHost + ":"
+        else:
+            myHostDisplay = myHost + ":"
+        if PeerID == None:
+            myHostDisplay += f"[{my_config['wg_port_search_range']}]"
+        else:
+            myHostDisplay += str(PeerID)
     return f"""
 <!DOCTYPE html>
 <html>
@@ -556,7 +567,9 @@ async def verify_user_signature(peerASN,plaintext,pub_key_pgp,raw_signature):
         raw_signature = removern(raw_signature)
         if plaintext == "" or plaintext == None:
             raise ValueError('Plain text to sign can\'t be null, please click the button "Get Signature" first.')
-        raw_signature = raw_signature.replace("\r\n","\n")
+        raw_signature = raw_signature.replace("\r\n","\n").replace("\r","\n")
+        if raw_signature == "" or raw_signature == None:
+            raise ValueError('Signature can\'t be null, please click the button "Get Signature" and follow the instruction.')
         sig_info = jwt.decode(plaintext.encode("utf8"),jwt_secret,algorithms=["HS256"])
         if sig_info["ASN"] != peerASN:
             raise ValueError("JWT verification failed. You are not the mntner of " + sig_info["ASN"])
@@ -1113,11 +1126,12 @@ def newConfig(paramaters,overwrite=False):
                                         }};
                                         """)
 
-                                    
-    paramaters = { valid_key: paramaters[valid_key] for valid_key in client_valid_keys }
-    paramaters["peer_signature"] = ""
-    paramaters["peer_plaintext"] = ""
     paramaters["peerName"] = peerName
+    paramaters_save = { valid_key: paramaters[valid_key] for valid_key in client_valid_keys }
+    paramaters_save["peer_signature"] = ""
+    paramaters_save["peer_plaintext"] = ""
+    paramaters_save["peerName"] = peerName
+    
     if customDevice == None:
         retconfig = {
             f"{wgconfpath}/{if_name}.conf": wgconf,
@@ -1125,7 +1139,7 @@ def newConfig(paramaters,overwrite=False):
         }
     else:
         retconfig = {}
-    retconfig[f"{wgconfpath}/peerinfo/{peerID}.yaml"] = yaml.dump(paramaters)
+    retconfig[f"{wgconfpath}/peerinfo/{peerID}.yaml"] = yaml.dump(paramaters_save)
     retconfig[f"{bdconfpath}/{if_name}.conf"] = birdconf
     return {
         "config":retconfig,
@@ -1291,8 +1305,8 @@ async def action(paramaters):
                 paramaters["MP_BGP"] = True
                 paramaters["Ext_Nh"] = False
                 paramaters["hasHost"] = True
-            return 200, get_html(paramaters,peerSuccess=False)
-        if action == "Check My Info":
+            return 200, await get_html(paramaters,peerSuccess=False)
+        if action == "Check My Info" or action == "Show":
             if paramaters["PeerID"] == None:
                 raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), "")
             try:
@@ -1301,8 +1315,12 @@ async def action(paramaters):
                 e.filename = paramaters["PeerID"] + ".yaml"
                 raise e
             peerInfo = { valid_key: peerInfo[valid_key] for valid_key in client_valid_keys if valid_key in peerInfo }
-            paramaters = {**paramaters,**peerInfo, **my_paramaters}
-            return 200, get_html(paramaters,peerSuccess=True)
+            del peerInfo["peer_signature"]
+            del peerInfo["peer_plaintext"]
+            if paramaters["peer_pub_key_pgp"] != "" or  paramaters["peer_pub_key_pgp"] != None:
+                del  peerInfo["peer_pub_key_pgp"]
+            paramaters = {**paramaters,**peerInfo}
+            return 200, await get_html(paramaters,peerSuccess=True)
         # Check ASN is valid for following action
         if paramaters["peerASN"] == None:
             raise ValueError("peerASN can't be null.")
@@ -1336,7 +1354,6 @@ async def action(paramaters):
                 paramaters["peer_pub_key_pgp"] = ""
             paramaters = new_config["paramaters"]
             saveConfig(new_config)
-            paramaters = {**paramaters, **my_paramaters}
             if paramaters["myHost"] == None:
                 myHostDisplay = paramaters["myHostDisplay"]
             else:
