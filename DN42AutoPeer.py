@@ -79,6 +79,7 @@ def try_read_env(params,pkey,ekey,ValType=str,default=None):
             params[pkey] = json.loads( os.environ[ekey] )
         else:
             params[pkey] = ValType(os.environ[ekey])
+        print(f"Load {pkey} from env, val: {params[pkey]}")
     if pkey not in params:
         if default == None:
             raise ValueError("default for " + pkey + " are not set")
@@ -94,6 +95,7 @@ if "WG_SPEED_LIMIT" in os.environ:
 
 try_read_env(my_paramaters,"myIPV4",'DN42_IPV4')
 try_read_env(my_paramaters,"myIPV6",'DN42_IPV6')
+try_read_env(my_paramaters,"myIPV4LL",'DN42_IPV4_LL')
 try_read_env(my_paramaters,"myIPV6LL",'DN42_IPV6_LL')
 try_read_env(my_paramaters,"myHost",'DN42AP_ENDPOINT')
 try_read_env(my_paramaters,"myHostDisplay",'DN42AP_HOST_DISPLAY')
@@ -112,6 +114,7 @@ try_read_env(my_config,"wgconfpath",'DN42AP_WGCONFPATH')
 try_read_env(my_config,"bdconfpath",'DN42AP_BIRDCONFPATH')
 try_read_env(my_config,"gitsyncpath",'DN42AP_GIT_SYNC_PATH')
 try_read_env(my_config,"admin_mnt",'DN42AP_ADMIN')
+try_read_env(my_config,"register_redirect",'DN42AP_REGISTER_REDIRECT')
 try_read_env(my_config,"wg_port_search_range",'DN42AP_PORT_RANGE',str)
 try_read_env(my_config,"init_device",'DN42AP_INIT_DEVICE',bool)
 try_read_env(my_config,"reset_wgconf_interval",'DN42AP_RESET_WGCONF',int,0)
@@ -146,11 +149,12 @@ bdconfpath = my_config["bdconfpath"]
 
 pathlib.Path(wgconfpath + "/peerinfo").mkdir(parents=True, exist_ok=True)
 
-client_valid_keys = ["peer_plaintext","peer_pub_key_pgp","peer_signature", "peerASN", "hasIPV4", "peerIPV4", "hasIPV6", "peerIPV6", "hasIPV6LL", "peerIPV6LL","MP_BGP","Ext_Nh", "hasHost", "peerHost", "peerWG_Pub_Key","peerWG_PS_Key", "peerContact", "PeerID","myIPV6LL","customDevice","myWG_Pri_Key","transitMode","myWG_MTU"]
-client_valid_keys_admin_only = ["customDevice","myWG_Pri_Key"]
+client_valid_keys = ["peer_plaintext","peer_pub_key_pgp","peer_signature", "peerASN","peerName", "hasIPV4", "peerIPV4","hasIPV4LL","peerIPV4LL", "hasIPV6", "peerIPV6", "hasIPV6LL", "peerIPV6LL","MP_BGP","Ext_Nh", "hasHost", "peerHost", "peerWG_Pub_Key","peerWG_PS_Key", "peerContact", "PeerID","myIPV4LL","myIPV6LL","customDevice","customDeviceSetup","myWG_Pri_Key","transitMode","myWG_MTU"]
+client_valid_keys_admin_only = ["customDevice","customDeviceSetup","myWG_Pri_Key","peerName"]
 dn42repo_base = my_config["dn42repo_base"]
 DN42_valid_ipv4s = my_config["DN42_valid_ipv4s"]
 DN42_valid_ipv6s = my_config["DN42_valid_ipv6s"]
+valid_ipv4_lilos = my_config["valid_ipv4_linklocals"]
 valid_ipv6_lilos = my_config["valid_ipv6_linklocals"]
 whois = DN42whois.whois(*my_config["dn42_whois_server"])
 whois_query = whois.query
@@ -256,7 +260,7 @@ async def get_signature_html(baseURL,paramaters):
     retstr += f"""
 <br>
 <form action="action_page.php" method="post">\n"""
-    paramaters = { valid_key: paramaters[valid_key] for valid_key in client_valid_keys }
+    paramaters = { valid_key: paramaters[valid_key] for valid_key in client_valid_keys if valid_key in paramaters}
     paramaters["peer_plaintext"] = text2sign
     for k,v in paramaters.items():
         if v == None:
@@ -605,7 +609,7 @@ async def verify_user_signature(peerASN,plaintext,pub_key_pgp,raw_signature):
         customError.__name__ = "SignatureError: " + type(e).__name__
         raise customError(str(e))
 
-def get_err_page(paramaters,title,error,big_title="Server Error", tab_title = None):
+def get_err_page(paramaters,title,error,big_title="Server Error", tab_title = None,redirect=None):
     if tab_title == None:
         tab_title = title
     retstr =  f"""
@@ -636,15 +640,21 @@ background-color:#555555;}}
   <h3>{str(error).replace(chr(10),"<br>").replace(" ","&nbsp;")}</h3>
   <h3></h3>
   <form action="action_page.php" method="post">\n"""
-    paramaters = { valid_key: paramaters[valid_key] for valid_key in client_valid_keys }
+    paramaters = { valid_key: paramaters[valid_key] for valid_key in client_valid_keys if valid_key in paramaters}
     for k,v in paramaters.items():
         if v == None:
             v = ""
         elif v == True:
             v = "on"
         retstr += f'<input type="hidden" name="{k}" value="{v}">\n'
-    retstr +="""<input type="submit" name="action" value="OK" />
-  </form>
+    if redirect == None:
+        retstr +='<input type="submit" name="action" value="OK" />'
+    else:
+        retstr += f"""<a href="{redirect}">
+   <input type="button" value="OK" />
+</a>"""
+    retstr +="""
+    </form>
  </fieldset></div>
 </div>
 </body>
@@ -662,7 +672,17 @@ def check_valid_ip_range(IPclass,IPranges,ip,name):
         if IPclass(iprange).supernet_of(IPclass(ip)):
             return True
     raise ValueError(ip + " is not a valid " + name + " address")
-    
+
+def check_wg_key(wgkey):
+    wg_keylen = 32
+    if len(wgkey) > wg_keylen*2:
+        raise ValueError(f"Wireguard key {wgkey} too long")
+    base64_valid_chars = set(string.ascii_letters + string.digits + "+/=")
+    if not set(wgkey).issubset(base64_valid_chars):
+        raise ValueError(f"Wireguard key {wgkey} contains invalid character: {set(filter(lambda x:x not in base64_valid_chars,wgkey))}")
+    key_raw = base64.b64decode(wgkey)
+    if len(key_raw) != 32:
+        raise ValueError(f"Wireguard key {wgkey} are not {wg_keylen} bytes len")
 
 async def check_reg_paramater(paramaters,alliw_exists=False):
     if (paramaters["hasIPV4"] or paramaters["hasIPV6"] or paramaters["hasIPV6LL"]) == False:
@@ -719,6 +739,15 @@ async def check_reg_paramater(paramaters,alliw_exists=False):
             raise PermissionError("IP " + paramaters["peerIPV4"] + f" owned by {originASN}({ipowner}) instead of {paramaters['peerASN']}({admin})")
     else:
         paramaters["peerIPV6"] = None
+
+    if paramaters["hasIPV4LL"]:
+        check_valid_ip_range(IPv4Network,valid_ipv4_lilos,paramaters["peerIPV4LL"],"link-local ipv4")
+        if paramaters["myIPV4LL"] == None:
+            raise NotImplementedError("Sorry, I don't have IPv4 link-local address.")
+        if paramaters["myIPV4LL"] == paramaters["peerIPV4LL"]:
+            raise ValueError("Conflict. Your IPv4 link-local address are conflict with my IPv4 link-local address.")
+    else:
+        paramaters["peerIPV4LL"] = None
     if paramaters["hasIPV6LL"]:
         check_valid_ip_range(IPv6Network,valid_ipv6_lilos,paramaters["peerIPV6LL"],"link-local ipv6")
         if paramaters["myIPV6LL"] == None:
@@ -759,6 +788,9 @@ async def check_reg_paramater(paramaters,alliw_exists=False):
             raise ValueError('"Your WG Public Key" can\'t be null.')
         if peerKey == paramaters["myWG_Pub_Key"]:
             raise ValueError('You can\'t use my wireguard public key as your wireguard public key.')
+        check_wg_key(peerKey)
+        check_wg_key(paramaters["myWG_Pri_Key"])
+        
     if alliw_exists == False:
         RRstate_repo.pull()
         conf_dir = wgconfpath + "/peerinfo"
@@ -908,17 +940,20 @@ def newConfig(paramaters,overwrite=False):
     peerASN = int(paramaters["peerASN"][2:])
     peerKey = paramaters["peerWG_Pub_Key"]
     peerPSK = paramaters["peerWG_PS_Key"]
-    peerName = paramaters["peerContact"]
+    peerContact = paramaters["peerContact"]
+    peerName = paramaters["peerName"]
     peerID = paramaters["PeerID"]
     peerHost = paramaters["peerHost"]
     peerIPV4 = paramaters["peerIPV4"]
     peerIPV6 = paramaters["peerIPV6"]
+    peerIPV4LL = paramaters["peerIPV4LL"]
     peerIPV6LL = paramaters["peerIPV6LL"]
     transitMode =  paramaters["transitMode"]
     MP_BGP = paramaters["MP_BGP"]
     Ext_Nh = paramaters["Ext_Nh"]
     myIPV4 = paramaters["myIPV4"]
     myIPV6 = paramaters["myIPV6"]
+    myIPV4LL = paramaters["myIPV4LL"]
     myIPV6LL = paramaters["myIPV6LL"]
     myhost = paramaters["myHost"]
     myasn = paramaters["myASN"][2:]
@@ -927,7 +962,7 @@ def newConfig(paramaters,overwrite=False):
     mtu = paramaters["myWG_MTU"]
     customDevice = paramaters["customDevice"]
     
-    if peerName == None or len(peerName) == 0:
+    if peerContact == None or len(peerContact) == 0:
         raise ValueError('"Your Telegram ID or e-mail" can\'t be null.')
     
     portlist = list(sorted(map(lambda x:int(x.split(".")[0]),filter(lambda x:x[-4:] == "yaml", os.listdir(wgconfpath + "/peerinfo")))))
@@ -958,12 +993,16 @@ def newConfig(paramaters,overwrite=False):
     if peerID in portlist and overwrite == False:
         raise IndexError("PeerID already exists.")
     paramaters["PeerID"] = peerID
-    peerName = str(int(peerID) % 10000).zfill(4) + peerName
-    peerName = peerName.replace("-","_")
-    peerName = re.sub(r"[^A-Za-z0-9_]+", '', peerName)
-    peerName = peerName[:10]
+    if peerName == None:
+        peerName = str(int(peerID) % 10000).zfill(4) + peerContact
+        peerName = peerName.replace("-","_")
+        peerName = re.sub(r"[^A-Za-z0-9_]+", '', peerName)
+        peerName = peerName[:10]
     
-    if_name = "dn42-" + peerName
+    if customDevice == None:
+        if_name = "dn42-" + peerName
+    else:
+        if_name = customDevice
     
     wgconf = textwrap.dedent(f"""\
                                 [Interface]
@@ -979,40 +1018,41 @@ def newConfig(paramaters,overwrite=False):
         wgconf += f"PresharedKey = { peerPSK }\n"
     
     wgsh = textwrap.dedent(f"""\
-                                #!/bin/bash
                                 ip link add dev {if_name} type wireguard
-                                wg setconf {if_name} {wgconfpath}/{if_name}.conf
+                                wg setconf {if_name} {wgconfpath}/{peerName}.conf
+                                """)
+    setupsh = textwrap.dedent(f"""\
                                 ip link set {if_name} up
                                 ip link set mtu {mtu} dev {if_name}
                                 """)
-    if customDevice != None:
-        if_name = customDevice
-    
-
     if use_speed_limit:
-        wgsh += f"wondershaper {if_name} $WG_SPEED_LIMIT $WG_SPEED_LIMIT || true\n"
+        setupsh += f"wondershaper {if_name} $WG_SPEED_LIMIT $WG_SPEED_LIMIT || true\n"
+    
+    if peerIPV4LL != None:
+        myIPV4 = myIPV4LL
+        peerIPV4 = peerIPV4LL
     birdPeerV4 = None
     birdMyV4 = myIPV4
     birdPeerV6 = None
     birdMyV6 = None
     if myIPV4 != None:
         if Ext_Nh == True:
-            pass # wgsh += f"ip addr add {myIPV4}/32 dev {if_name}\n"
+            pass # setupsh += f"ip addr add {myIPV4}/32 dev {if_name}\n"
         elif peerIPV4 != None:
-            wgsh += f"ip addr add {myIPV4} peer {peerIPV4} dev {if_name}\n"
+            setupsh += f"ip addr add {myIPV4} peer {peerIPV4} dev {if_name}\n"
             if MP_BGP == False:
                 birdPeerV4 = peerIPV4
         else:
-            pass #wgsh += f"ip addr add {myIPV4}/32 dev {if_name}\n"
+            pass #setupsh += f"ip addr add {myIPV4}/32 dev {if_name}\n"
     
     if peerIPV6LL != None:
-        pass #wgsh += f"ip addr add {myIPV6}/128 dev {if_name}\n"
-        wgsh += f"ip addr add {myIPV6LL}/64 dev {if_name}\n"
+        pass #setupsh += f"ip addr add {myIPV6}/128 dev {if_name}\n"
+        setupsh += f"ip addr add {myIPV6LL}/64 dev {if_name}\n"
         birdPeerV6 = peerIPV6LL
         birdMyV6 = myIPV6LL
     elif peerIPV6 != None:
-        wgsh += f"ip addr add {myIPV6} peer {peerIPV6} dev {if_name}\n"
-        wgsh += f"ip route add {peerIPV6}/128 src {myIPV6} dev {if_name}\n"
+        setupsh += f"ip addr add {myIPV6} peer {peerIPV6} dev {if_name}\n"
+        setupsh += f"ip route add {peerIPV6}/128 src {myIPV6} dev {if_name}\n"
         birdPeerV6 = peerIPV6
         birdMyV6 = myIPV6
     
@@ -1127,23 +1167,28 @@ def newConfig(paramaters,overwrite=False):
                                         """)
 
     paramaters["peerName"] = peerName
-    paramaters_save = { valid_key: paramaters[valid_key] for valid_key in client_valid_keys }
+    paramaters_save = { valid_key: paramaters[valid_key] for valid_key in client_valid_keys if valid_key in paramaters}
     paramaters_save["peer_signature"] = ""
     paramaters_save["peer_plaintext"] = ""
     paramaters_save["peerName"] = peerName
     
-    if customDevice == None:
-        retconfig = {
-            f"{wgconfpath}/{if_name}.conf": wgconf,
-            f"{wgconfpath}/{if_name}.sh": wgsh,
-        }
-    else:
-        retconfig = {}
-    retconfig[f"{wgconfpath}/peerinfo/{peerID}.yaml"] = yaml.dump(paramaters_save)
-    retconfig[f"{bdconfpath}/{if_name}.conf"] = birdconf
+    devsh = "\n".join([ "#!/bin/bash" , wgsh , setupsh])
+    retconfig = {
+        f"{wgconfpath}/{peerName}.conf": wgconf,
+        f"{wgconfpath}/peerinfo/{peerID}.yaml": yaml.dump(paramaters_save),
+        f"{bdconfpath}/{peerName}.conf": birdconf,
+        f"{wgconfpath}/{peerName}.sh": devsh,
+    }
+    
+    if customDevice != None: 
+        devsh = "\n".join([ "#!/bin/bash" , paramaters["customDeviceSetup"] , setupsh])
+        del retconfig[f"{wgconfpath}/{peerName}.conf"]
+        retconfig[f"{wgconfpath}/{peerName}.sh"] = devsh
+
     return {
         "config":retconfig,
         "if_name": if_name,
+        "peerName": peerName,
         "paramaters": paramaters,
     }
 
@@ -1163,10 +1208,10 @@ def saveConfig(new_config):
                 os.chmod(path, 0o755)
             runsh = True
         print("================================")
-    if_name = new_config["if_name"]
-    RRstate_repo.push(f'{node_name} peer add {if_name}')
+    peerName = new_config["peerName"]
+    RRstate_repo.push(f'{node_name} peer add {peerName}')
     if runsh:
-        print_and_exec(f"{wgconfpath}/{if_name}.sh")
+        print_and_exec(f"{wgconfpath}/{peerName}.sh")
     print_and_exec("birdc configure")
     return None
 
@@ -1205,6 +1250,7 @@ def print_and_exec(command):
         command = f'echo {shlex.quote(command + "; exit")} | nc {use_remote_command}'
     print(command)
     os.system(command)
+    time.sleep(1)
                                     
 def print_and_rm(file):
     print("rm " + file)
@@ -1217,15 +1263,16 @@ def print_and_rmrf(tree):
     print("rm -rf " + tree)
     shutil.rmtree(tree)
                                     
-def deleteConfig(peerID,peerName):
-    if_name = "dn42-" + peerName
+def deleteConfig(peerID,peerName,customDevice):
     RRstate_repo.pull()
-    print_and_rm(f"{wgconfpath}/{if_name}.conf")
-    print_and_rm(f"{wgconfpath}/{if_name}.sh")
+    print_and_rm(f"{wgconfpath}/{peerName}.conf")
+    print_and_rm(f"{wgconfpath}/{peerName}.sh")
     print_and_rm(f"{wgconfpath}/peerinfo/{peerID}.yaml")
-    print_and_rm(f"{bdconfpath}/{if_name}.conf")
-    RRstate_repo.push(f'{node_name} peer del {if_name}')
-    print_and_exec(f"ip link del {if_name}")
+    print_and_rm(f"{bdconfpath}/{peerName}.conf")
+    RRstate_repo.push(f'{node_name} peer del {peerName}')
+    if customDevice == None:
+        if_name = "dn42-" + peerName
+        print_and_exec(f"ip link del {if_name}")
     print_and_exec("birdc configure")
     return None
 
@@ -1259,22 +1306,27 @@ def get_paramaters(paramaters,isAdmin=False):
     paramaters["peerASN"]          = get_key_default(paramaters,"peerASN",None)
     paramaters["hasIPV4"]          = get_key_default(paramaters,"hasIPV4",False)
     paramaters["peerIPV4"]         = get_key_default(paramaters,"peerIPV4",None)
+    paramaters["hasIPV4LL"]        = get_key_default(paramaters,"hasIPV4LL",False)
+    paramaters["peerIPV4LL"]       = get_key_default(paramaters,"peerIPV4LL",None)
     paramaters["hasIPV6"]          = get_key_default(paramaters,"hasIPV6",False)
     paramaters["peerIPV6"]         = get_key_default(paramaters,"peerIPV6",None)
     paramaters["hasIPV6LL"]        = get_key_default(paramaters,"hasIPV6LL",False)
     paramaters["peerIPV6LL"]       = get_key_default(paramaters,"peerIPV6LL",None)
+    paramaters["myIPV4LL"]         = get_key_default(paramaters,"myIPV4LL",None)
     paramaters["myIPV6LL"]         = get_key_default(paramaters,"myIPV6LL",my_paramaters["myIPV6LL"])
     paramaters["myWG_Pri_Key"]     = get_key_default(paramaters,"myWG_Pri_Key",my_config["myWG_Pri_Key"])
     paramaters["myWG_MTU"]         = get_key_default(paramaters,"myWG_MTU",1280,int)
     paramaters["transitMode"]      = get_key_default(paramaters,"transitMode","Regular")
     paramaters["customDevice"]     = get_key_default(paramaters,"customDevice",None)
+    paramaters["customDeviceSetup"]= get_key_default(paramaters,"customDeviceSetup","")
     paramaters["MP_BGP"]           = get_key_default(paramaters,"MP_BGP",True)
     paramaters["Ext_Nh"]           = get_key_default(paramaters,"Ext_Nh",False)
     paramaters["hasHost"]          = get_key_default(paramaters,"hasHost",False)
     paramaters["peerHost"]         = get_key_default(paramaters,"peerHost",None)
     paramaters["peerWG_Pub_Key"]   = get_key_default(paramaters,"peerWG_Pub_Key","")
-    paramaters["peerWG_PS_Key"]   = get_key_default(paramaters,"peerWG_PS_Key","")
+    paramaters["peerWG_PS_Key"]    = get_key_default(paramaters,"peerWG_PS_Key","")
     paramaters["peerContact"]      = get_key_default(paramaters,"peerContact","")
+    paramaters["peerName"]         = get_key_default(paramaters,"peerName",None)
     paramaters["PeerID"]           = get_key_default(paramaters,"PeerID",None)
     paramaters["hasIPV4"] = isFormTrue(paramaters["hasIPV4"])
     paramaters["hasIPV6"] = isFormTrue(paramaters["hasIPV6"])
@@ -1339,7 +1391,7 @@ async def action(paramaters):
                 raise e
             if peerInfo["peerASN"] != paramaters["peerASN"]:
                 raise PermissionError("Peer ASN not match")
-            deleteConfig(peerInfo["PeerID"],peerInfo["peerName"])
+            deleteConfig(peerInfo["PeerID"],peerInfo["peerName"],peerInfo["customDevice"])
             paramaters["PeerID"] = None
             return 200, get_err_page(paramaters,"Profile deleted:" ,yaml.dump(peerInfo,sort_keys=False).replace("\n","<br>"),big_title="Success!")
         elif action=="Get Signature":
@@ -1367,7 +1419,7 @@ async def action(paramaters):
                 "My WG Public Key":paramaters["myWG_Pub_Key"],
                 "My Contact":  paramaters["myContact"]
             }
-            return 200, get_err_page(paramaters, f'Your PeerID is: { paramaters["PeerID"] }<br>My info:',yaml.dump(myInfo, sort_keys=False),big_title="Peer Success!", tab_title = "Success!")
+            return 200, get_err_page(paramaters, f'Your PeerID is: { paramaters["PeerID"] }<br>My info:',yaml.dump(myInfo, sort_keys=False),big_title="Peer Success!", tab_title = "Success!",redirect=my_config["register_redirect"])
         return 400, get_err_page(paramaters,"400 - Bad Request",ValueError("Unknow action" + str(action)))
     except Exception as e:
         title = type(e).__name__
