@@ -968,6 +968,7 @@ def newConfig(paramaters,overwrite=False):
     publkey = paramaters["myWG_Pub_Key"]
     mtu = paramaters["myWG_MTU"]
     customDevice = paramaters["customDevice"]
+    customDeviceSetup = paramaters["customDeviceSetup"]
     
     if peerContact == None or len(peerContact) == 0:
         raise ValueError('"Your Telegram ID or e-mail" can\'t be null.')
@@ -1010,6 +1011,9 @@ def newConfig(paramaters,overwrite=False):
         if_name = "dn42-" + peerName
     else:
         if_name = customDevice
+        
+    
+    customDeviceSetup = customDeviceSetup.replace( "%i" , if_name )
     
     wgconf = textwrap.dedent(f"""\
                                 [Interface]
@@ -1191,7 +1195,7 @@ def newConfig(paramaters,overwrite=False):
     }
     
     if customDevice != None: 
-        devsh = "\n".join([ "#!/bin/bash" , paramaters["customDeviceSetup"] , setupsh])
+        devsh = "\n".join([ "#!/bin/bash" , customDeviceSetup , setupsh])
         del retconfig[f"{wgconfpath}/{peerName}.conf"]
         retconfig[f"{wgconfpath}/{peerName}.sh"] = devsh
 
