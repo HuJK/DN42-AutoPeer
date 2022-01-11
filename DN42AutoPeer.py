@@ -338,15 +338,22 @@ async def get_html(paramaters,peerSuccess=False):
         hasHost_Readonly = 'onclick="alert(\'Sorry, I don\\\'t have a public IP so that your endpoint can\\\'t be null.\');return false;";'
         myHostDisplay = paramaters["myHostDisplay"]
     else:
-        myHostDisplay = my_paramaters["myHostDisplay"] + ":"
-        if my_paramaters["myHostHidden"]:
-            if peer_signature != "" or peer_signature != None:
-                mntner = await verify_user_signature(paramaters["peerASN"],paramaters["peer_plaintext"],paramaters["peer_pub_key_pgp"],peer_signature)
-                myHostDisplay = myHost + ":"
-        else:
-            myHostDisplay = myHost + ":"
         if PeerID == None:
-            myHostDisplay += f"[{my_config['wg_port_search_range']}]"
+            myHostDisplay = "(Register to get the endpoint) :"
+        else:
+            myHostDisplay = "(Authenticate to show the endpoint) :"
+        if my_paramaters["myHostHidden"]:
+            if peer_signature != "" and peer_signature != None:
+                try:
+                    mntner = await verify_user_signature(paramaters["peerASN"],paramaters["peer_plaintext"],paramaters["peer_pub_key_pgp"],peer_signature)
+                    myHostDisplay = myHost + " :"
+                except Exception as e:
+                    paramaters["peer_signature"] = ""
+                    raise e
+        else:
+            myHostDisplay = myHost + " :"
+        if PeerID == None:
+            myHostDisplay += f" [{my_config['wg_port_search_range']}]"
         else:
             myHostDisplay += str(PeerID)
     return f"""
@@ -1023,6 +1030,9 @@ def newConfig(paramaters,overwrite=False):
                                 """)
     setupsh = textwrap.dedent(f"""\
                                 ip link set {if_name} up
+                                """)
+    if int(mtu) > 0:
+        setupsh += textwrap.dedent(f"""\
                                 ip link set mtu {mtu} dev {if_name}
                                 """)
     if use_speed_limit:
