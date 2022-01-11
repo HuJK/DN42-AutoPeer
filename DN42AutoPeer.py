@@ -1014,7 +1014,8 @@ def newConfig(paramaters,overwrite=False):
         if_name = customDevice
         
     
-    customDeviceSetup = customDeviceSetup.replace( "%i" , if_name )
+    customDeviceSetup = customDeviceSetup.replace( "%if_name" , if_name ).replace( "%peer_host" , peerHost )
+    
     
     wgconf = textwrap.dedent(f"""\
                                 [Interface]
