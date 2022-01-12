@@ -692,7 +692,7 @@ def check_wg_key(wgkey):
         raise ValueError(f"Wireguard key {wgkey} are not {wg_keylen} bytes len")
 
 async def check_reg_paramater(paramaters,alliw_exists=False):
-    if (paramaters["hasIPV4"] or paramaters["hasIPV6"] or paramaters["hasIPV6LL"]) == False:
+    if (paramaters["hasIPV4"] or paramaters["hasIPV4LL"] or paramaters["hasIPV6"] or paramaters["hasIPV6LL"]) == False:
         raise ValueError("You can't peer without any IP.")
     mntner,admin = await get_info_from_asn(paramaters["peerASN"])
     if paramaters["hasIPV4"]:
@@ -773,23 +773,24 @@ async def check_reg_paramater(paramaters,alliw_exists=False):
             raise ValueError("Value Error. You need enable multiprotocol BGP to use extended next hop.")
         if paramaters["allowExtNh"] == False:
             raise NotImplementedError("Sorry, I don't support extended next hop.")
-    if paramaters["hasHost"]:
-        if paramaters["peerHost"] == None and (my_paramaters["myHost"] == None):
-            raise ValueError("Sorry, I don't have a public IP so that your endpoint can't be null.")
-        if paramaters["peerHost"] == None or ":" not in paramaters["peerHost"]:
-            raise ValueError("Parse Error, Host must looks like address:port.")
-        hostaddr,port = paramaters["peerHost"].rsplit(":",1)
-        port = int(port)
-        if hostaddr[0] == "[" and hostaddr[-1] == "]":
-            hostaddr = hostaddr[1:-1]
-        elif ":" in hostaddr:
-             raise ValueError(f"Parse Error, IPv6 Address as endpoint, it should be like [{hostaddr}]:{port}.")
-        addrinfo = socket.getaddrinfo(hostaddr,port)
-    else:
-        paramaters["peerHost"] = None
+
     if paramaters["peerWG_PS_Key"] == "":
         paramaters["peerWG_PS_Key"] == None
     if paramaters["customDevice"] == None:
+        if paramaters["hasHost"]:
+            if paramaters["peerHost"] == None and (my_paramaters["myHost"] == None):
+                raise ValueError("Sorry, I don't have a public IP so that your endpoint can't be null.")
+            if paramaters["peerHost"] == None or ":" not in paramaters["peerHost"]:
+                raise ValueError("Parse Error, Host must looks like address:port.")
+            hostaddr,port = paramaters["peerHost"].rsplit(":",1)
+            port = int(port)
+            if hostaddr[0] == "[" and hostaddr[-1] == "]":
+                hostaddr = hostaddr[1:-1]
+            elif ":" in hostaddr:
+                 raise ValueError(f"Parse Error, IPv6 Address as endpoint, it should be like [{hostaddr}]:{port}.")
+            addrinfo = socket.getaddrinfo(hostaddr,port)
+        else:
+            paramaters["peerHost"] = None
         peerKey = paramaters["peerWG_Pub_Key"]
         if peerKey == None or len(peerKey) == 0:
             raise ValueError('"Your WG Public Key" can\'t be null.')
@@ -1013,7 +1014,10 @@ def newConfig(paramaters,overwrite=False):
         if_name = customDevice
         
     
-    customDeviceSetup = customDeviceSetup.replace( "%i" , if_name )
+    customDeviceSetup = customDeviceSetup.replace( "%if_name" , if_name )
+    if peerHost != None:
+        customDeviceSetup = customDeviceSetup.replace( "%peer_host" , peerHost )
+    
     
     wgconf = textwrap.dedent(f"""\
                                 [Interface]
