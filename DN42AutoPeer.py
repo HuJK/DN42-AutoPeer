@@ -1238,7 +1238,7 @@ def initDevice():
     print_and_exec(f"ip link set up dn42-dummy")
     print_and_exec(f'ip addr add { my_paramaters["myIPV4"] } dev dn42-dummy')
     print_and_exec(f'ip addr add { my_paramaters["myIPV6"] } dev dn42-dummy')
-    for thesh in filter(lambda x:x[-3:] == ".sh", os.listdir(wgconfpath)):
+    for thesh in filter(lambda x:x[-3:] == ".sh", sorted(os.listdir(wgconfpath))):
         print_and_exec(wgconfpath + "/" + thesh)
 def syncWG():
     interval = my_config["reset_wgconf_interval"]
