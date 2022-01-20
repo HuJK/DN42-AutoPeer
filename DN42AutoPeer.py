@@ -441,6 +441,7 @@ async def get_html(paramaters,peerSuccess=False):
 </html>
 """
 
+remove_empty_line = lambda s: "\n".join(filter(lambda x:len(x)>0, s.replace("\r\n","\n").replace("\r","\n").split("\n")))
 async def get_info_from_asn(asn):
     asn_info = await whois_query("aut-num/" + asn)
     data = DN42whois.proc_data(asn_info)
@@ -475,9 +476,12 @@ async def get_auth_method(mnt,admin):
             pgp_pubkey_str = await try_get_pub_key(pgp_sign8)
             if pgp_pubkey_str == "":
                 continue
-            pub = pgpy.PGPKey.from_blob(pgp_pubkey_str.encode("utf8"))[0]
-            real_fingerprint = pub.fingerprint.replace(" ","")
-            ainfo = method + " " + real_fingerprint
+            try:
+                pub = pgpy.PGPKey.from_blob(remove_empty_line(pgp_pubkey_str).encode("utf8"))[0]
+                real_fingerprint = pub.fingerprint.replace(" ","")
+                ainfo = method + " " + real_fingerprint
+            except Exception as e:
+                ainfo = method + "_Error " + str(e).replace(" ","_")
         else:
             ainfo = a
         ret[ainfo] = False
@@ -492,30 +496,30 @@ async def try_get_pub_key(pgpsig):
         result = list(filter(lambda l:l.startswith("certif:"),result.split("\n")))
         result = list(map(lambda x:x.split(":")[1].lstrip(),result))
         result = "\n".join(result)
-        return result
+        return remove_empty_line(result)
     except Exception as e:
         pass
     return ""
 
 
 def verify_signature_pgp(plaintext,fg,pub_key,raw_signature):
-    pub = pgpy.PGPKey.from_blob(pub_key.encode("utf8"))[0]
+    pub = pgpy.PGPKey.from_blob(remove_empty_line(pub_key).encode("utf8"))[0]
     fg_in = fg.replace(" ","")
     fg_p = pub.fingerprint.replace(" ","")
     if fg_in != fg_p:
         raise ValueError("fingerprint not match")
-    sig = pgpy.PGPSignature.from_blob(raw_signature.encode("utf8"))
+    sig = pgpy.PGPSignature.from_blob(remove_empty_line(raw_signature).encode("utf8"))
     if not pub.verify(plaintext,sig):
         raise ValueError("signature verification failed")
     return True
 
 def verify_signature_pgpn8(plaintext,fg,pub_key,raw_signature):
-    pub = pgpy.PGPKey.from_blob(pub_key.encode("utf8"))[0]
+    pub = pgpy.PGPKey.from_blob(remove_empty_line(pub_key).encode("utf8"))[0]
     fg_in = fg.replace(" ","")
     fg_p = pub.fingerprint.replace(" ","")
     if fg_in != fg_p:
         raise ValueError("fingerprint not match")
-    sig = pgpy.PGPSignature.from_blob(raw_signature.encode("utf8"))
+    sig = pgpy.PGPSignature.from_blob(remove_empty_line(raw_signature).encode("utf8"))
     if not pub.verify(plaintext,sig):
         raise ValueError("signature verification failed")
     return True
