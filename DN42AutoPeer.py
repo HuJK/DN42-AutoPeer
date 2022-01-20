@@ -1249,7 +1249,7 @@ def syncWG():
     while True:
         time.sleep(interval)
         if os.path.isdir(conf_dir): #Check this node hasn't peer with us before
-            for conf_file in os.listdir(conf_dir):
+            for conf_file in sorted(os.listdir(conf_dir)):
                 if conf_file.endswith(".yaml") and os.path.isfile(f"{conf_dir}/{conf_file}"):
                     conf = yaml.load(open(f"{conf_dir}/{conf_file}").read(),Loader=yaml.SafeLoader)
                     if conf["customDevice"] != None:
