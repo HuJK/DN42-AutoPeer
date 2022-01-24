@@ -22,7 +22,7 @@ DN42_valid_ipv6s:
   - fd00::/8
   - fd10:127::/32
 valid_ipv4_linklocals:
-  - 169.254.0.0/16
+  - 169.254.42.0/24
 valid_ipv6_linklocals:
   - fe80::/64
 wg_port_search_range: "range(20000 + peerASN % 10000 ,20100 + peerASN % 10000 )"

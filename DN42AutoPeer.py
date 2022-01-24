@@ -263,6 +263,8 @@ async def get_signature_html(baseURL,paramaters):
     paramaters = { valid_key: paramaters[valid_key] for valid_key in client_valid_keys if valid_key in paramaters}
     paramaters["peer_plaintext"] = text2sign
     for k,v in paramaters.items():
+        if k in client_valid_keys_admin_only:
+            continue
         if v == None:
             v = ""
         elif v == True:
@@ -288,6 +290,9 @@ async def get_html(paramaters,peerSuccess=False):
     hasIPV6 = paramaters["hasIPV6"]
     hasIPV6Disabled = ""
     peerIPV6 = paramaters["peerIPV6"]
+    hasIPV4LL = paramaters["hasIPV4LL"]
+    hasIPV4LLDisabled = ""
+    peerIPV4LL = paramaters["peerIPV4LL"]
     hasIPV6LL = paramaters["hasIPV6LL"]
     hasIPV6LLDisabled = ""
     peerIPV6LL = paramaters["peerIPV6LL"]
@@ -306,6 +311,7 @@ async def get_html(paramaters,peerSuccess=False):
     myHost = paramaters["myHost"]
     myIPV4 = paramaters["myIPV4"]
     myIPV6 = paramaters["myIPV6"]
+    myIPV4LL = paramaters["myIPV4LL"]
     myIPV6LL = paramaters["myIPV6LL"]
     myWG_Pub_Key = paramaters["myWG_Pub_Key"]
     myContact = paramaters["myContact"]
@@ -313,6 +319,8 @@ async def get_html(paramaters,peerSuccess=False):
         myIPV4 = ""
     if myIPV6 == None:
         myIPV6 = ""
+    if myIPV4LL == None:
+        myIPV4LL = ""
     if myIPV6LL == None:
         myIPV6LL = ""
     if myHost == None:
@@ -325,10 +333,14 @@ async def get_html(paramaters,peerSuccess=False):
         hasIPV6 = False
         hasIPV6Disabled = "disabled"
         peerIPV6 = "Sorry, I don't support IPv6 address."
+    if myIPV4LL == "":
+        hasIPV4LL = False
+        hasIPV4LLDisabled = "disabled"
+        peerIPV4LL = "Sorry, I don't support IPv4 link local address."
     if myIPV6LL == "":
         hasIPV6LL = False
         hasIPV6LLDisabled = "disabled"
-        peerIPV6LL = "Sorry, My interface doesn't support IPv6 link local address."
+        peerIPV6LL = "Sorry, I don't support IPv6 link local address."
     if not (myIPV4!="") and (myIPV6!="" or myIPV6LL!=""):
         MP_BGP_Disabled = "disabled"
         Ext_Nh_Disabled = "disabled"
@@ -408,6 +420,7 @@ async def get_html(paramaters,peerSuccess=False):
  <table class="table">
    <tr><td><input type="checkbox" name="hasIPV4" {"checked" if hasIPV4 else ""} {hasIPV4Disabled}>DN42 IPv4</td><td><input type="text" value="{peerIPV4 if peerIPV4 != None else ""}" name="peerIPV4" {hasIPV4Disabled} /></td></tr>
    <tr><td><input type="checkbox" name="hasIPV6" {"checked" if hasIPV6 else ""} {hasIPV6Disabled}>DN42 IPv6</td><td><input type="text" value="{peerIPV6 if peerIPV6 != None else ""}" name="peerIPV6" {hasIPV6Disabled} /></td></tr>
+   <tr><td><input type="checkbox" name="hasIPV4LL" {"checked" if hasIPV4LL else ""} {hasIPV4LLDisabled}>IPv4 Link local</td><td><input type="text" value="{peerIPV4LL if peerIPV4LL != None else ""}" name="peerIPV4LL" {hasIPV4LLDisabled} /></td></tr>
    <tr><td><input type="checkbox" name="hasIPV6LL" {"checked" if hasIPV6LL else ""} {hasIPV6LLDisabled}>IPv6 Link local</td><td><input type="text" value="{peerIPV6LL if peerIPV6LL != None else ""}" name="peerIPV6LL" {hasIPV6LLDisabled} /></td></tr>
    <tr><td><input type="checkbox" name="MP_BGP" {"checked" if MP_BGP else ""} {MP_BGP_Disabled} >Multiprotocol BGP</td><td></td></tr>
    <tr><td><input type="checkbox" name="Ext_Nh" {"checked" if Ext_Nh else ""} {Ext_Nh_Disabled} >Extended next hop</td><td></td></tr>
@@ -430,6 +443,7 @@ async def get_html(paramaters,peerSuccess=False):
    <tr><td>My ASN</td><td><input type="text" value="{myASN}" readonly /></td></tr>
    <tr><td>DN42 IPv4</td><td><input type="text" value="{myIPV4}" readonly /></td></tr>
    <tr><td>DN42 IPv6</td><td><input type="text" value="{myIPV6}" readonly /></td></tr>
+   <tr><td>IPv4 Link local</td><td><input type="text" value="{myIPV4LL}" readonly /></td></tr>
    <tr><td>IPv6 Link local</td><td><input type="text" value="{myIPV6LL}" readonly /></td></tr>
    <tr><td>Connectrion Info: </td><td>  </td></tr>
    <tr><td>My Clearnet Endpoint</td><td><input type="text" value="{myHostDisplay}" readonly /></td></tr>
@@ -653,6 +667,8 @@ background-color:#555555;}}
   <form action="action_page.php" method="post">\n"""
     paramaters = { valid_key: paramaters[valid_key] for valid_key in client_valid_keys if valid_key in paramaters}
     for k,v in paramaters.items():
+        if k in client_valid_keys_admin_only:
+            continue
         if v == None:
             v = ""
         elif v == True:
@@ -682,7 +698,7 @@ def check_valid_ip_range(IPclass,IPranges,ip,name):
     for iprange in IPranges:
         if IPclass(iprange).supernet_of(IPclass(ip)):
             return True
-    raise ValueError(ip + " is not a valid " + name + " address")
+    raise ValueError(ip + " are not in acceptable " + name + " range: " + str(IPranges))
 
 def check_wg_key(wgkey):
     wg_keylen = 32
@@ -721,8 +737,7 @@ async def check_reg_paramater(paramaters,alliw_exists=False):
             pass
         else:
             ipowner = peerIPV4_info["admin-c"][0]
-            raise PermissionError("IP " + paramaters["peerIPV4"] + f" owned by {originASN}({ipowner}) instead of {paramaters['peerASN']}({admin})")
-            
+            raise PermissionError("IP " + paramaters["peerIPV4"] + f" owned by {originASN}({ipowner}) instead of {paramaters['peerASN']}({admin})") 
     else:
         paramaters["peerIPV4"] = None
     if paramaters["hasIPV6"]:
@@ -750,7 +765,7 @@ async def check_reg_paramater(paramaters,alliw_exists=False):
             raise PermissionError("IP " + paramaters["peerIPV4"] + f" owned by {originASN}({ipowner}) instead of {paramaters['peerASN']}({admin})")
     else:
         paramaters["peerIPV6"] = None
-
+        
     if paramaters["hasIPV4LL"]:
         check_valid_ip_range(IPv4Network,valid_ipv4_lilos,paramaters["peerIPV4LL"],"link-local ipv4")
         if paramaters["myIPV4LL"] == None:
@@ -770,6 +785,9 @@ async def check_reg_paramater(paramaters,alliw_exists=False):
     if paramaters["MP_BGP"]:
         if not (paramaters["hasIPV6"] or paramaters["hasIPV6LL"]):
             raise ValueError("Value Error. You need a IPv6 address to use multiprotocol BGP.")
+        if not paramaters["Ext_Nh"]:
+            if not (paramaters["hasIPV4"] or paramaters["hasIPV4LL"]):
+                raise ValueError("Value Error. You need a IPv4 address to enable multiprotocol BGP unless you support extended next hop.")
     if paramaters["Ext_Nh"]:
         if not (paramaters["hasIPV6"] or paramaters["hasIPV6LL"]):
             raise ValueError("Value Error. You need a IPv6 address to use extended next hop.")
@@ -802,6 +820,9 @@ async def check_reg_paramater(paramaters,alliw_exists=False):
             raise ValueError('You can\'t use my wireguard public key as your wireguard public key.')
         check_wg_key(peerKey)
         check_wg_key(paramaters["myWG_Pri_Key"])
+    else:
+        paramaters["peerWG_Pub_Key"] = ""
+        paramaters["myWG_Pub_Key"] = ""
         
     if alliw_exists == False:
         RRstate_repo.pull()
@@ -1334,7 +1355,7 @@ def get_paramaters(paramaters,isAdmin=False):
     paramaters["peerIPV6"]         = get_key_default(paramaters,"peerIPV6",None)
     paramaters["hasIPV6LL"]        = get_key_default(paramaters,"hasIPV6LL",False)
     paramaters["peerIPV6LL"]       = get_key_default(paramaters,"peerIPV6LL",None)
-    paramaters["myIPV4LL"]         = get_key_default(paramaters,"myIPV4LL",None)
+    paramaters["myIPV4LL"]         = get_key_default(paramaters,"myIPV4LL",my_paramaters["myIPV4LL"])
     paramaters["myIPV6LL"]         = get_key_default(paramaters,"myIPV6LL",my_paramaters["myIPV6LL"])
     paramaters["myWG_Pri_Key"]     = get_key_default(paramaters,"myWG_Pri_Key",my_config["myWG_Pri_Key"])
     paramaters["myWG_MTU"]         = get_key_default(paramaters,"myWG_MTU",1280,int)
