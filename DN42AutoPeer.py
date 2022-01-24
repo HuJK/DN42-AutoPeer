@@ -411,10 +411,11 @@ async def get_html(paramaters,peerSuccess=False):
 <form action="action_page.php" method="post" class="markdown-body">
  <h2>Authentication</h2>
  <table class="table">
-   <tr><td>Your ASN</td><td><input type="text" value="{peerASN if peerASN != None else ""}" name="peerASN" style="width:75%" /><input type="submit" name="action" value="Get Signature" /></td></tr>
+   <tr><td>Your ASN</td><td><input type="text" value="{peerASN if peerASN != None else ""}" name="peerASN" /></td></tr>
    <tr><td>Plain text to sign</td><td><input type="text" value="{peer_plaintext}" name="peer_plaintext" readonly/></td></tr>
    <tr><td>Your PGP public key<br>(leave it blank if you don't use it)</td><td><textarea name="peer_pub_key_pgp">{peer_pub_key_pgp}</textarea></td></tr>
    <tr><td>Your signature</td><td><textarea name="peer_signature">{peer_signature}</textarea></td></tr>
+   <tr><td><input type="submit" name="action" value="Get Signature" /></td><td>Fill your ASN, Click the button, Follow the instruction, Done</td></tr>
  </table>
  <h2>Registration</h2>
  <table class="table">
@@ -436,15 +437,13 @@ async def get_html(paramaters,peerSuccess=False):
    <tr><td>Your Peer ID</td><td><input type="text" value="{PeerID if PeerID != None else ""}" name="PeerID" /></td></tr>
    <tr><td><input type="submit" name="action" value="Check My Info" /><input type="submit" name="action" value="Delete" /></td><td>Get the info of an existening peer or delete it.</td></tr>
  </table>
-</form>
 <h3>{"Peer success! " if peerSuccess else "This is "}My Info</h3>
-<form method="post">
  <table>
    <tr><td>My ASN</td><td><input type="text" value="{myASN}" readonly /></td></tr>
    <tr><td>DN42 IPv4</td><td><input type="text" value="{myIPV4}" readonly /></td></tr>
    <tr><td>DN42 IPv6</td><td><input type="text" value="{myIPV6}" readonly /></td></tr>
-   <tr><td>IPv4 Link local</td><td><input type="text" value="{myIPV4LL}" readonly /></td></tr>
-   <tr><td>IPv6 Link local</td><td><input type="text" value="{myIPV6LL}" readonly /></td></tr>
+   <tr><td>IPv4 Link local</td><td><input type="text" name="myIPV4LL" value="{myIPV4LL}" {hasIPV4LLDisabled} /></td></tr>
+   <tr><td>IPv6 Link local</td><td><input type="text" name="myIPV6LL" value="{myIPV6LL}" {hasIPV6LLDisabled} /></td></tr>
    <tr><td>Connectrion Info: </td><td>  </td></tr>
    <tr><td>My Clearnet Endpoint</td><td><input type="text" value="{myHostDisplay}" readonly /></td></tr>
    <tr><td>My WG Public Key</td><td><input type="text" value="{myWG_Pub_Key}" readonly /></td></tr>
@@ -714,6 +713,8 @@ def check_wg_key(wgkey):
 async def check_reg_paramater(paramaters,alliw_exists=False):
     if (paramaters["hasIPV4"] or paramaters["hasIPV4LL"] or paramaters["hasIPV6"] or paramaters["hasIPV6LL"]) == False:
         raise ValueError("You can't peer without any IP.")
+    if paramaters["peerASN"] == "AS" + paramaters["myASN"]:
+        raise ValueError("You can't peer with my ASN.")
     mntner,admin = await get_info_from_asn(paramaters["peerASN"])
     if paramaters["hasIPV4"]:
         check_valid_ip_range(IPv4Network,DN42_valid_ipv4s,paramaters["peerIPV4"],"DN42 ip")
@@ -767,19 +768,21 @@ async def check_reg_paramater(paramaters,alliw_exists=False):
         paramaters["peerIPV6"] = None
         
     if paramaters["hasIPV4LL"]:
-        check_valid_ip_range(IPv4Network,valid_ipv4_lilos,paramaters["peerIPV4LL"],"link-local ipv4")
         if paramaters["myIPV4LL"] == None:
             raise NotImplementedError("Sorry, I don't have IPv4 link-local address.")
         if paramaters["myIPV4LL"] == paramaters["peerIPV4LL"]:
             raise ValueError("Conflict. Your IPv4 link-local address are conflict with my IPv4 link-local address.")
+        check_valid_ip_range(IPv4Network,valid_ipv4_lilos,paramaters["peerIPV4LL"],"link-local ipv4")
+        check_valid_ip_range(IPv4Network,valid_ipv4_lilos,paramaters["myIPV4LL"],"link-local ipv4")
     else:
         paramaters["peerIPV4LL"] = None
     if paramaters["hasIPV6LL"]:
-        check_valid_ip_range(IPv6Network,valid_ipv6_lilos,paramaters["peerIPV6LL"],"link-local ipv6")
         if paramaters["myIPV6LL"] == None:
             raise NotImplementedError("Sorry, I don't have IPv6 link-local address.")
         if paramaters["myIPV6LL"] == paramaters["peerIPV6LL"]:
             raise ValueError("Conflict. Your IPv6 link-local address are conflict with my IPv6 link-local address.")
+        check_valid_ip_range(IPv6Network,valid_ipv6_lilos,paramaters["peerIPV6LL"],"link-local ipv6")
+        check_valid_ip_range(IPv6Network,valid_ipv6_lilos,paramaters["myIPV6LL"],"link-local ipv6")
     else:
         paramaters["peerIPV6LL"] = None
     if paramaters["MP_BGP"]:
@@ -1343,6 +1346,7 @@ def get_paramaters(paramaters,isAdmin=False):
         for k in client_valid_keys_admin_only:
             if k in paramaters:
                 del paramaters[k]
+    print(paramaters)
     paramaters["peer_plaintext"]   = get_key_default(paramaters,"peer_plaintext","")
     paramaters["peer_pub_key_pgp"] = get_key_default(paramaters,"peer_pub_key_pgp","")
     paramaters["peer_signature"]   = get_key_default(paramaters,"peer_signature","")
@@ -1355,8 +1359,8 @@ def get_paramaters(paramaters,isAdmin=False):
     paramaters["peerIPV6"]         = get_key_default(paramaters,"peerIPV6",None)
     paramaters["hasIPV6LL"]        = get_key_default(paramaters,"hasIPV6LL",False)
     paramaters["peerIPV6LL"]       = get_key_default(paramaters,"peerIPV6LL",None)
-    paramaters["myIPV4LL"]         = get_key_default(paramaters,"myIPV4LL",my_paramaters["myIPV4LL"])
-    paramaters["myIPV6LL"]         = get_key_default(paramaters,"myIPV6LL",my_paramaters["myIPV6LL"])
+    paramaters["myIPV4LL"]         = get_key_default(paramaters,"myIPV4LL",my_paramaters["myIPV4LL"]) if my_paramaters["myIPV4LL"] != "" else ""
+    paramaters["myIPV6LL"]         = get_key_default(paramaters,"myIPV6LL",my_paramaters["myIPV6LL"]) if my_paramaters["myIPV6LL"] != "" else ""
     paramaters["myWG_Pri_Key"]     = get_key_default(paramaters,"myWG_Pri_Key",my_config["myWG_Pri_Key"])
     paramaters["myWG_MTU"]         = get_key_default(paramaters,"myWG_MTU",1280,int)
     paramaters["transitMode"]      = get_key_default(paramaters,"transitMode","Regular")
@@ -1377,8 +1381,9 @@ def get_paramaters(paramaters,isAdmin=False):
     paramaters["MP_BGP"] = isFormTrue(paramaters["MP_BGP"])
     paramaters["Ext_Nh"] = isFormTrue(paramaters["Ext_Nh"])
     paramaters["hasHost"] = isFormTrue(paramaters["hasHost"])
-
+    print(paramaters)
     paramaters = {**my_paramaters,**paramaters} 
+    print(paramaters)
     return action , paramaters
     
 async def action(paramaters):
@@ -1457,6 +1462,7 @@ async def action(paramaters):
                 "My ASN":          paramaters["myASN"],
                 "DN42 IPv4":       paramaters["myIPV4"],
                 "DN42 IPv6":       paramaters["myIPV6"],
+                "IPv4 Link local": paramaters["myIPV4LL"],
                 "IPv6 Link local": paramaters["myIPV6LL"],
                 "Endpoint Address":myHostDisplay,
                 "My WG Public Key":paramaters["myWG_Pub_Key"],
