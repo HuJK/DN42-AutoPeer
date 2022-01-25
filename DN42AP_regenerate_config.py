@@ -49,10 +49,10 @@ for f in os.listdir(DN42AutoPeer.wgconfpath):
 async def main():    
     for old_conf_file in os.listdir(conf_dir):
         if old_conf_file.endswith(".yaml") and os.path.isfile(f"{conf_dir}/{old_conf_file}"):
-            old_conf = yaml.load(open(f"{conf_dir}/{old_conf_file}").read(),Loader=yaml.SafeLoader)
-            action , paramaters = DN42AutoPeer.get_paramaters(old_conf,isAdmin=True)
-            paramaters = await DN42AutoPeer.check_reg_paramater(paramaters,alliw_exists=True)
             try:
+                old_conf = yaml.load(open(f"{conf_dir}/{old_conf_file}").read(),Loader=yaml.SafeLoader)
+                action , paramaters = DN42AutoPeer.get_paramaters(old_conf,isAdmin=True)
+                paramaters = await DN42AutoPeer.check_reg_paramater(paramaters,alliw_exists=True)
                 new_config = DN42AutoPeer.newConfig(paramaters,overwrite=True)
             except Exception as e:
                 print(old_conf_file)
