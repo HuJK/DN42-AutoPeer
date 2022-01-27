@@ -156,6 +156,7 @@ DN42_valid_ipv4s = my_config["DN42_valid_ipv4s"]
 DN42_valid_ipv6s = my_config["DN42_valid_ipv6s"]
 valid_ipv4_lilos = my_config["valid_ipv4_linklocals"]
 valid_ipv6_lilos = my_config["valid_ipv6_linklocals"]
+wg_allowed_ips = DN42_valid_ipv4s + DN42_valid_ipv6s + valid_ipv4_lilos + valid_ipv6_lilos
 whois = DN42whois.whois(*my_config["dn42_whois_server"])
 whois_query = whois.query
 
@@ -1053,7 +1054,7 @@ def newConfig(paramaters,overwrite=False):
                                 ListenPort = { str(peerID) }
                                 [Peer]
                                 PublicKey = { peerKey }
-                                AllowedIPs = 10.0.0.0/8, 172.20.0.0/14, 172.31.0.0/16, fd00::/8, fe80::/64
+                                AllowedIPs = {  ", ".join( wg_allowed_ips ) }
                                 """)
     if peerHost != None and peerHost != "":
         wgconf += f"Endpoint = { peerHost }\n"
@@ -1322,13 +1323,15 @@ def deleteConfig(peerID,peerName,customDevice):
     print_and_exec("birdc configure")
     return None
 
-def get_key_default(D,k,d,ValType=str):
+def get_key_default(D,k,d):
     if k in D and D[k] != "" and D[k] != None:
-        return D[k]
-        if ValType == bool:
-            params[pkey] = os.environ[ekey].lower() == "true"
+        ValType = type(d)
+        if ValType == bool and type(D[k]) == str:
+            return D[k].lower() == "true" or D[k].lower() == "on"
+        elif d != None:
+            return ValType(D[k])
         else:
-            params[pkey] = ValType(os.environ[ekey])
+            return D[k]
     return d
 
 def qsd2d(qsd):
@@ -1346,7 +1349,6 @@ def get_paramaters(paramaters,isAdmin=False):
         for k in client_valid_keys_admin_only:
             if k in paramaters:
                 del paramaters[k]
-    print(paramaters)
     paramaters["peer_plaintext"]   = get_key_default(paramaters,"peer_plaintext","")
     paramaters["peer_pub_key_pgp"] = get_key_default(paramaters,"peer_pub_key_pgp","")
     paramaters["peer_signature"]   = get_key_default(paramaters,"peer_signature","")
@@ -1362,7 +1364,7 @@ def get_paramaters(paramaters,isAdmin=False):
     paramaters["myIPV4LL"]         = get_key_default(paramaters,"myIPV4LL",my_paramaters["myIPV4LL"]) if my_paramaters["myIPV4LL"] != "" else ""
     paramaters["myIPV6LL"]         = get_key_default(paramaters,"myIPV6LL",my_paramaters["myIPV6LL"]) if my_paramaters["myIPV6LL"] != "" else ""
     paramaters["myWG_Pri_Key"]     = get_key_default(paramaters,"myWG_Pri_Key",my_config["myWG_Pri_Key"])
-    paramaters["myWG_MTU"]         = get_key_default(paramaters,"myWG_MTU",1280,int)
+    paramaters["myWG_MTU"]         = get_key_default(paramaters,"myWG_MTU",1280)
     paramaters["transitMode"]      = get_key_default(paramaters,"transitMode","Regular")
     paramaters["customDevice"]     = get_key_default(paramaters,"customDevice",None)
     paramaters["customDeviceSetup"]= get_key_default(paramaters,"customDeviceSetup","")
@@ -1375,15 +1377,7 @@ def get_paramaters(paramaters,isAdmin=False):
     paramaters["peerContact"]      = get_key_default(paramaters,"peerContact","")
     paramaters["peerName"]         = get_key_default(paramaters,"peerName",None)
     paramaters["PeerID"]           = get_key_default(paramaters,"PeerID",None)
-    paramaters["hasIPV4"] = isFormTrue(paramaters["hasIPV4"])
-    paramaters["hasIPV6"] = isFormTrue(paramaters["hasIPV6"])
-    paramaters["hasIPV6LL"] = isFormTrue(paramaters["hasIPV6LL"])
-    paramaters["MP_BGP"] = isFormTrue(paramaters["MP_BGP"])
-    paramaters["Ext_Nh"] = isFormTrue(paramaters["Ext_Nh"])
-    paramaters["hasHost"] = isFormTrue(paramaters["hasHost"])
-    print(paramaters)
     paramaters = {**my_paramaters,**paramaters} 
-    print(paramaters)
     return action , paramaters
     
 async def action(paramaters):

@@ -17,10 +17,10 @@ dn42repo_base: "https://raw.githubusercontent.com/KusakabeSi/dv42-registry/maste
 admin_mnt: ""
 DN42_valid_ipv4s:
   - 172.20.0.0/14
-  - 10.127.0.0/16
+  - 172.31.0.0/16
+  - 10.0.0.0/8
 DN42_valid_ipv6s:
   - fd00::/8
-  - fd10:127::/32
 valid_ipv4_linklocals:
   - 169.254.42.0/24
 valid_ipv6_linklocals:
