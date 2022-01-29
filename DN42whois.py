@@ -88,7 +88,7 @@ def proc_data(data_in):
         key , val = data_in_item.split(":",1)
         val = val.lstrip()
         if key in ret_dict:
-            ret_dict[key] += [val]
+            ret_dict[key] = [val] + ret_dict[key]
         else:
             ret_dict[key] = [val]
     return ret_dict

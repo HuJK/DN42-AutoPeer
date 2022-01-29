@@ -52,7 +52,7 @@ async def main():
             try:
                 old_conf = yaml.load(open(f"{conf_dir}/{old_conf_file}").read(),Loader=yaml.SafeLoader)
                 action , paramaters = DN42AutoPeer.get_paramaters(old_conf,isAdmin=True)
-                paramaters = await DN42AutoPeer.check_reg_paramater(paramaters,alliw_exists=True)
+                paramaters = await DN42AutoPeer.check_reg_paramater(paramaters,skip_check=old_conf_file[:-5])
                 new_config = DN42AutoPeer.newConfig(paramaters,overwrite=True)
             except Exception as e:
                 print(old_conf_file)

@@ -22,6 +22,7 @@ import requests
 import datetime
 import ipaddress
 import traceback
+import nacl.public
 import tornado.web
 import tornado.gen
 from git import Repo
@@ -35,7 +36,7 @@ from ipaddress import IPv6Network
 from subprocess import Popen, PIPE, STDOUT
 from tornado.httpclient import HTTPClientError
 import DN42whois 
-from DN42GIT import DN42GIT 
+from DN42GIT import DN42GIT
 
 import argparse
 parser = argparse.ArgumentParser()
@@ -102,7 +103,6 @@ try_read_env(my_paramaters,"myHostDisplay",'DN42AP_HOST_DISPLAY')
 try_read_env(my_paramaters,"myHostHidden",'DN42AP_HOST_HIDDEN',bool,False)
 try_read_env(my_paramaters,"myASN",'DN42_E_AS')
 try_read_env(my_paramaters,"myContact",'DN42_CONTACT')
-try_read_env(my_paramaters,"myWG_Pub_Key",'WG_PUBKEY')
 try_read_env(my_paramaters,"allowExtNh",'DN42AP_ALLOW_ENH',bool,False)
 try_read_env(my_config,"html_title",'DN42AP_TITLE')
 try_read_env(my_config,"git_repo_url",'DN42AP_GIT_REPO_URL')
@@ -116,6 +116,8 @@ try_read_env(my_config,"gitsyncpath",'DN42AP_GIT_SYNC_PATH')
 try_read_env(my_config,"admin_mnt",'DN42AP_ADMIN')
 try_read_env(my_config,"register_redirect",'DN42AP_REGISTER_REDIRECT')
 try_read_env(my_config,"wg_port_search_range",'DN42AP_PORT_RANGE',str)
+try_read_env(my_config,"dn42_whois_server","DN42AP_WHOIS_SERVER","json")
+try_read_env(my_config,"dn42repo_base","DN42AP_REPO_BASE",str)
 try_read_env(my_config,"init_device",'DN42AP_INIT_DEVICE',bool)
 try_read_env(my_config,"reset_wgconf_interval",'DN42AP_RESET_WGCONF',int,0)
 
@@ -278,7 +280,13 @@ async def get_signature_html(baseURL,paramaters):
 """
     return retstr
 
-
+def wgpri2pub(pri):
+    try:
+        pb = base64.b64decode(pri)
+        pp = nacl.public.PrivateKey(pb)
+        return base64.b64encode(bytes(pp.public_key)).decode("ascii")
+    except Exception as e:
+        return "Wireguard Key: " + str(e)
 
 async def get_html(paramaters,peerSuccess=False):
     peer_plaintext = paramaters["peer_plaintext"]
@@ -359,16 +367,21 @@ async def get_html(paramaters,peerSuccess=False):
             if peer_signature != "" and peer_signature != None:
                 try:
                     mntner = await verify_user_signature(paramaters["peerASN"],paramaters["peer_plaintext"],paramaters["peer_pub_key_pgp"],peer_signature)
-                    myHostDisplay = myHost + " :"
+                    myHostDisplay = myHost + ":"
                 except Exception as e:
-                    paramaters["peer_signature"] = ""
-                    raise e
+                    pass
         else:
-            myHostDisplay = myHost + " :"
+            myHostDisplay = myHost + ":"
         if PeerID == None:
             myHostDisplay += f" [{my_config['wg_port_search_range']}]"
         else:
             myHostDisplay += str(PeerID)
+    edit_btn_disabled = "disabled"
+    try:
+        peerInfo = yaml.load(open(wgconfpath + "/peerinfo/" + str(paramaters["PeerID"]) + ".yaml").read(),Loader=yaml.SafeLoader)
+        edit_btn_disabled = ""
+    except FileNotFoundError as e:
+        pass
     return f"""
 <!DOCTYPE html>
 <html>
@@ -416,27 +429,28 @@ async def get_html(paramaters,peerSuccess=False):
    <tr><td>Plain text to sign</td><td><input type="text" value="{peer_plaintext}" name="peer_plaintext" readonly/></td></tr>
    <tr><td>Your PGP public key<br>(leave it blank if you don't use it)</td><td><textarea name="peer_pub_key_pgp">{peer_pub_key_pgp}</textarea></td></tr>
    <tr><td>Your signature</td><td><textarea name="peer_signature">{peer_signature}</textarea></td></tr>
-   <tr><td><input type="submit" name="action" value="Get Signature" /></td><td>Fill your ASN, Click the button, Follow the instruction, Done</td></tr>
+   <tr><td>Fill your ASN, Click the button, Follow the instruction</td><td><input type="submit" name="action" value="Get Signature" /></td></tr>
  </table>
  <h2>Registration</h2>
  <table class="table">
+   <tr><td><h5>BGP Session Info:</h5></td><td>  </td></tr>
    <tr><td><input type="checkbox" name="hasIPV4" {"checked" if hasIPV4 else ""} {hasIPV4Disabled}>DN42 IPv4</td><td><input type="text" value="{peerIPV4 if peerIPV4 != None else ""}" name="peerIPV4" {hasIPV4Disabled} /></td></tr>
    <tr><td><input type="checkbox" name="hasIPV6" {"checked" if hasIPV6 else ""} {hasIPV6Disabled}>DN42 IPv6</td><td><input type="text" value="{peerIPV6 if peerIPV6 != None else ""}" name="peerIPV6" {hasIPV6Disabled} /></td></tr>
    <tr><td><input type="checkbox" name="hasIPV4LL" {"checked" if hasIPV4LL else ""} {hasIPV4LLDisabled}>IPv4 Link local</td><td><input type="text" value="{peerIPV4LL if peerIPV4LL != None else ""}" name="peerIPV4LL" {hasIPV4LLDisabled} /></td></tr>
    <tr><td><input type="checkbox" name="hasIPV6LL" {"checked" if hasIPV6LL else ""} {hasIPV6LLDisabled}>IPv6 Link local</td><td><input type="text" value="{peerIPV6LL if peerIPV6LL != None else ""}" name="peerIPV6LL" {hasIPV6LLDisabled} /></td></tr>
    <tr><td><input type="checkbox" name="MP_BGP" {"checked" if MP_BGP else ""} {MP_BGP_Disabled} >Multiprotocol BGP</td><td></td></tr>
    <tr><td><input type="checkbox" name="Ext_Nh" {"checked" if Ext_Nh else ""} {Ext_Nh_Disabled} >Extended next hop</td><td></td></tr>
-   <tr><td>Connectrion Info: </td><td>  </td></tr>
+   <tr><td><h5>Wireguard Connection Info:</h5></td><td>  </td></tr>
    <tr><td><input type="checkbox" name="hasHost" {"checked" if hasHost else ""} {hasHost_Readonly}>Your Clearnet Endpoint (domain or ip:port)</td><td><input type="text" value="{peerHost if peerHost != None else ""}" name="peerHost" /></td></tr>
    <tr><td>Your Wireguard Public Key</td><td><input type="text" value="{peerWG_Pub_Key}" name="peerWG_Pub_Key" /></td></tr>
    <tr><td>Your Wireguard Pre-Shared Key (Optional)</td><td><input type="text" value="{peerWG_PS_Key}" name="peerWG_PS_Key" /></td></tr>
    <tr><td>Your Telegram ID or e-mail</td><td><input type="text" value="{peerContact}" name="peerContact" /></td></tr>
-   <tr><td><input type="submit" name="action" value="Register" /></td><td>Register a new peer to get Peer ID</td></tr>
+   <tr><td>Register a new peer and get the peer ID</td><td><input type="submit" name="action" value="Register" /></td></tr>
    </table>
-   <h2>Deletion</h2>
+   <h2>Management</h2>
    <table  class="table">
    <tr><td>Your Peer ID</td><td><input type="text" value="{PeerID if PeerID != None else ""}" name="PeerID" /></td></tr>
-   <tr><td><input type="submit" name="action" value="Check My Info" /><input type="submit" name="action" value="Delete" /></td><td>Get the info of an existening peer or delete it.</td></tr>
+   <tr><td></td><td><input type="submit" name="action" value="Show" /><input type="submit" name="action" value="Update" {edit_btn_disabled}/><input type="submit" name="action" value="Delete" {edit_btn_disabled} /></td></tr>
  </table>
 <h3>{"Peer success! " if peerSuccess else "This is "}My Info</h3>
  <table>
@@ -628,11 +642,11 @@ async def verify_user_signature(peerASN,plaintext,pub_key_pgp,raw_signature):
             pass
         raise ValueError(yaml.dump(authresult, sort_keys=False,default_style='|'))
     except Exception as e:
-        class customError(type(e)):
+        class AuthenticationError(type(e)):
             def init(m):
                 super(m)
-        customError.__name__ = "SignatureError: " + type(e).__name__
-        raise customError(str(e))
+        AuthenticationError.__name__ = "AuthenticationError: " + type(e).__name__
+        raise AuthenticationError(str(e))
 
 def get_err_page(paramaters,title,error,big_title="Server Error", tab_title = None,redirect=None):
     if tab_title == None:
@@ -711,7 +725,7 @@ def check_wg_key(wgkey):
     if len(key_raw) != 32:
         raise ValueError(f"Wireguard key {wgkey} are not {wg_keylen} bytes len")
 
-async def check_reg_paramater(paramaters,alliw_exists=False):
+async def check_reg_paramater(paramaters,skip_check=None,git_pull=True):
     if (paramaters["hasIPV4"] or paramaters["hasIPV4LL"] or paramaters["hasIPV6"] or paramaters["hasIPV6LL"]) == False:
         raise ValueError("You can't peer without any IP.")
     if paramaters["peerASN"] == "AS" + paramaters["myASN"]:
@@ -827,20 +841,21 @@ async def check_reg_paramater(paramaters,alliw_exists=False):
     else:
         paramaters["peerWG_Pub_Key"] = ""
         paramaters["myWG_Pub_Key"] = ""
-        
-    if alliw_exists == False:
+    if git_pull:
         RRstate_repo.pull()
-        conf_dir = wgconfpath + "/peerinfo"
-        if os.path.isdir(conf_dir): #Check this node hasn't peer with us before
-            for old_conf_file in os.listdir(conf_dir):
-                if old_conf_file.endswith(".yaml") and os.path.isfile(f"{conf_dir}/{old_conf_file}"):
-                    old_conf = yaml.load(open(f"{conf_dir}/{old_conf_file}").read(),Loader=yaml.SafeLoader)
-                    if paramaters["peerIPV4"] != None and old_conf["peerIPV4"] == paramaters["peerIPV4"]:
-                        raise FileExistsError(f'This IPv4 address {paramaters["peerIPV4"]} already exisis in "{old_conf_file}", please remove the peering first.')
-                    if paramaters["peerIPV6"] != None and old_conf["peerIPV6"] == paramaters["peerIPV6"]:
-                        raise FileExistsError(f'This IPv6 address {paramaters["peerIPV6"]} already exisis in "{old_conf_file}", please remove the peering first.')
-                    if old_conf["peerHost"] != None and old_conf["peerHost"] == paramaters["peerHost"]:
-                        raise FileExistsError(f'This endpoint "{paramaters["peerHost"]}" already exisis in "{old_conf_file}", please remove the peering first.')
+    conf_dir = wgconfpath + "/peerinfo"
+    if os.path.isdir(conf_dir): #Check this node hasn't peer with us before
+        for old_conf_file in os.listdir(conf_dir):
+            if old_conf_file.endswith(".yaml") and os.path.isfile(f"{conf_dir}/{old_conf_file}"):
+                if skip_check != None and old_conf_file[:-5] == str(skip_check):
+                    continue
+                old_conf = yaml.load(open(f"{conf_dir}/{old_conf_file}").read(),Loader=yaml.SafeLoader)
+                if paramaters["peerIPV4"] != None and old_conf["peerIPV4"] == paramaters["peerIPV4"]:
+                    raise FileExistsError(f'This IPv4 address {paramaters["peerIPV4"]} already exisis in "{old_conf_file}", please remove the peering first.')
+                if paramaters["peerIPV6"] != None and old_conf["peerIPV6"] == paramaters["peerIPV6"]:
+                    raise FileExistsError(f'This IPv6 address {paramaters["peerIPV6"]} already exisis in "{old_conf_file}", please remove the peering first.')
+                if old_conf["peerHost"] != None and old_conf["peerHost"] == paramaters["peerHost"]:
+                    raise FileExistsError(f'This endpoint "{paramaters["peerHost"]}" already exisis in "{old_conf_file}", please remove the peering first.')
     return paramaters
 
 def replace_str(text,replace):
@@ -1237,30 +1252,8 @@ def newConfig(paramaters,overwrite=False):
         "if_name": if_name,
         "peerName": peerName,
         "paramaters": paramaters,
+        "paramaters_save": paramaters_save,
     }
-
-def saveConfig(new_config):
-    RRstate_repo.pull()
-    runsh = False
-    for path,content in new_config["config"].items():
-        print("================================")
-        print(path)
-        print(content)
-        fileparent = pathlib.Path(path).parent.absolute()
-        if not os.path.isdir(fileparent):
-            os.makedirs(fileparent, mode=0o700 , exist_ok=True)
-        with open(path,"w") as conffd:
-            conffd.write(content)
-            if content.startswith("#!"):
-                os.chmod(path, 0o755)
-            runsh = True
-        print("================================")
-    peerName = new_config["peerName"]
-    RRstate_repo.push(f'{node_name} peer add {peerName}')
-    if runsh:
-        print_and_exec(f"{wgconfpath}/{peerName}.sh")
-    print_and_exec("birdc configure")
-    return None
 
 def initDevice():
     print_and_exec(f"ip link add dn42-dummy type dummy")
@@ -1309,19 +1302,54 @@ def print_and_rm(file):
 def print_and_rmrf(tree):
     print("rm -rf " + tree)
     shutil.rmtree(tree)
-                                    
-def deleteConfig(peerID,peerName,customDevice):
-    RRstate_repo.pull()
+
+def saveConfig(new_config,sync=True):
+    if sync:
+        RRstate_repo.pull()
+    runsh = False
+    for path,content in new_config["config"].items():
+        print("================================")
+        print(path)
+        print(content)
+        fileparent = pathlib.Path(path).parent.absolute()
+        if not os.path.isdir(fileparent):
+            os.makedirs(fileparent, mode=0o700 , exist_ok=True)
+        with open(path,"w") as conffd:
+            conffd.write(content)
+            if content.startswith("#!"):
+                os.chmod(path, 0o755)
+            runsh = True
+        print("================================")
+    peerName = new_config["peerName"]
+    if sync:
+        RRstate_repo.push(f'{node_name} peer add {peerName}')
+    if runsh:
+        print_and_exec(f"{wgconfpath}/{peerName}.sh")
+    print_and_exec("birdc configure")
+    return None
+
+def deleteConfig(peerID,peerName,deleteDevice=True,sync=True):
+    if sync:
+        RRstate_repo.pull()
     print_and_rm(f"{wgconfpath}/{peerName}.conf")
     print_and_rm(f"{wgconfpath}/{peerName}.sh")
     print_and_rm(f"{wgconfpath}/peerinfo/{peerID}.yaml")
     print_and_rm(f"{bdconfpath}/{peerName}.conf")
-    RRstate_repo.push(f'{node_name} peer del {peerName}')
-    if customDevice == None:
+    if sync:
+        RRstate_repo.push(f'{node_name} peer del {peerName}')
+    if deleteDevice:
         if_name = "dn42-" + peerName
         print_and_exec(f"ip link del {if_name}")
     print_and_exec("birdc configure")
     return None
+
+def updateConfig(peerID,peerName,new_config,deleteDevice=True,sync=True):
+    if sync:
+        RRstate_repo.pull()
+    deleteConfig(peerID,peerName,deleteDevice=deleteDevice,sync=False)
+    saveConfig(new_config,sync=False)
+    if sync:
+        RRstate_repo.push(f'{node_name} peer update {peerName}')
 
 def get_key_default(D,k,d):
     if k in D and D[k] != "" and D[k] != None:
@@ -1377,9 +1405,19 @@ def get_paramaters(paramaters,isAdmin=False):
     paramaters["peerContact"]      = get_key_default(paramaters,"peerContact","")
     paramaters["peerName"]         = get_key_default(paramaters,"peerName",None)
     paramaters["PeerID"]           = get_key_default(paramaters,"PeerID",None)
+    paramaters["myWG_Pub_Key"]     = wgpri2pub(paramaters["myWG_Pri_Key"])
+    #print(yaml.safe_dump(paramaters))
     paramaters = {**my_paramaters,**paramaters} 
     return action , paramaters
-    
+
+def remove_sensitive(paramaters):
+    ret = {}
+    for k,v in paramaters.items():
+        if k in client_valid_keys_admin_only:
+            continue
+        ret[k] = v
+    return ret
+
 async def action(paramaters):
     action , paramaters = get_paramaters(paramaters)
     try:
@@ -1399,6 +1437,13 @@ async def action(paramaters):
                 paramaters["MP_BGP"] = True
                 paramaters["Ext_Nh"] = False
                 paramaters["hasHost"] = True
+            else:
+                try:
+                    peerInfo = yaml.load(open(wgconfpath + "/peerinfo/" + paramaters["PeerID"] + ".yaml").read(),Loader=yaml.SafeLoader)
+                    _, peerInfo = get_paramaters(peerInfo,isAdmin=True)
+                    paramaters["myWG_Pub_Key"] = peerInfo["myWG_Pub_Key"]
+                except Exception as e:
+                    pass
             return 200, await get_html(paramaters,peerSuccess=False)
         if action == "Check My Info" or action == "Show":
             if paramaters["PeerID"] == None:
@@ -1409,10 +1454,13 @@ async def action(paramaters):
                 e.filename = paramaters["PeerID"] + ".yaml"
                 raise e
             peerInfo = { valid_key: peerInfo[valid_key] for valid_key in client_valid_keys if valid_key in peerInfo }
-            del peerInfo["peer_signature"]
-            del peerInfo["peer_plaintext"]
-            if paramaters["peer_pub_key_pgp"] != "" or  paramaters["peer_pub_key_pgp"] != None:
-                del  peerInfo["peer_pub_key_pgp"]
+            _, peerInfo = get_paramaters(peerInfo,isAdmin=True)
+            if bool(paramaters["peer_plaintext"]):
+                del peerInfo["peer_plaintext"]
+            if bool(paramaters["peer_pub_key_pgp"]):
+                del peerInfo["peer_pub_key_pgp"]
+            if bool(paramaters["peer_signature"]):
+                del peerInfo["peer_signature"]
             paramaters = {**paramaters,**peerInfo}
             return 200, await get_html(paramaters,peerSuccess=True)
         # Check ASN is valid for following action
@@ -1424,8 +1472,8 @@ async def action(paramaters):
             check_num = int(paramaters['peerASN'])
             paramaters["peerASN"] = "AS" + paramaters["peerASN"]
         #Actions need ASN
-        if action=="Delete":
-            await verify_user_signature(paramaters["peerASN"],paramaters["peer_plaintext"],paramaters["peer_pub_key_pgp"],paramaters["peer_signature"])
+        if action=="Delete" or action=="Update":
+            mntner = await verify_user_signature(paramaters["peerASN"],paramaters["peer_plaintext"],paramaters["peer_pub_key_pgp"],paramaters["peer_signature"])
             try:
                 peerInfo = yaml.load(open(wgconfpath + "/peerinfo/" + paramaters["PeerID"] + ".yaml").read(),Loader=yaml.SafeLoader)
             except FileNotFoundError as e:
@@ -1433,9 +1481,21 @@ async def action(paramaters):
                 raise e
             if peerInfo["peerASN"] != paramaters["peerASN"]:
                 raise PermissionError("Peer ASN not match")
-            deleteConfig(peerInfo["PeerID"],peerInfo["peerName"],peerInfo["customDevice"])
-            paramaters["PeerID"] = None
-            return 200, get_err_page(paramaters,"Profile deleted:" ,yaml.dump(peerInfo,sort_keys=False).replace("\n","<br>"),big_title="Success!")
+            if action=="Delete":
+                deleteConfig(peerInfo["PeerID"],peerInfo["peerName"],deleteDevice=peerInfo["customDevice"]==None)
+                paramaters["PeerID"] = None
+                return 200, get_err_page(paramaters,"Profile deleted:" ,yaml.dump(remove_sensitive(peerInfo),sort_keys=False).replace("\n","<br>"),big_title="Success!")
+            elif action=="Update":
+                del paramaters["myWG_Pri_Key"]
+                del paramaters["myWG_Pub_Key"]
+                _, peerInfo = get_paramaters(peerInfo,isAdmin=True)
+                paramaters = {**peerInfo,**paramaters}
+                paramaters = await check_reg_paramater(paramaters,skip_check=paramaters["PeerID"])
+                new_config = newConfig(paramaters,overwrite=True)
+                if mntner == my_config["admin_mnt"]:
+                    paramaters["peer_pub_key_pgp"] = ""
+                updateConfig(peerInfo["PeerID"],peerInfo["peerName"],new_config,deleteDevice=peerInfo["customDevice"]==None,sync=True)
+                return 200, get_err_page(paramaters,"Profile updated:" ,yaml.dump(remove_sensitive(new_config["paramaters_save"]),sort_keys=False).replace("\n","<br>"),big_title="Success!")
         elif action=="Get Signature":
             return 200, await get_signature_html(dn42repo_base,paramaters)
         elif action == "Register":
@@ -1462,7 +1522,7 @@ async def action(paramaters):
                 "My WG Public Key":paramaters["myWG_Pub_Key"],
                 "My Contact":  paramaters["myContact"]
             }
-            return 200, get_err_page(paramaters, f'Your PeerID is: { paramaters["PeerID"] }<br>My info:',yaml.dump(myInfo, sort_keys=False),big_title="Peer Success!", tab_title = "Success!",redirect=my_config["register_redirect"])
+            return 200, get_err_page(paramaters, f'Your PeerID is: { paramaters["PeerID"] }<br>My info:',yaml.dump(remove_sensitive(myInfo), sort_keys=False),big_title="Peer Success!", tab_title = "Success!",redirect=my_config["register_redirect"])
         return 400, get_err_page(paramaters,"400 - Bad Request",ValueError("Unknow action" + str(action)))
     except Exception as e:
         title = type(e).__name__

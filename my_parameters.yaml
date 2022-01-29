@@ -7,5 +7,4 @@ myHostDisplay: ''
 myHostHidden: false
 myASN: AS4242420000
 myContact: ''
-myWG_Pub_Key: ''
 allowExtNh: true
