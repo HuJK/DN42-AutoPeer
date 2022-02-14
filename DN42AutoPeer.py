@@ -725,12 +725,18 @@ def check_wg_key(wgkey):
     if len(key_raw) != 32:
         raise ValueError(f"Wireguard key {wgkey} are not {wg_keylen} bytes len")
 
-async def check_reg_paramater(paramaters,skip_check=None,git_pull=True):
+async def check_reg_paramater(paramaters,skip_check=None,git_pull=True,allow_invalid_as=False):
     if (paramaters["hasIPV4"] or paramaters["hasIPV4LL"] or paramaters["hasIPV6"] or paramaters["hasIPV6LL"]) == False:
         raise ValueError("You can't peer without any IP.")
     if paramaters["peerASN"] == "AS" + paramaters["myASN"]:
         raise ValueError("You can't peer with my ASN.")
-    mntner,admin = await get_info_from_asn(paramaters["peerASN"])
+    try:
+        mntner,admin = await get_info_from_asn(paramaters["peerASN"])
+    except FileNotFoundError as e:
+        if allow_invalid_as:
+            mntner,admin = ["DN42-MNT","BURBLE-DN42"]
+        else:
+            raise e
     if paramaters["hasIPV4"]:
         check_valid_ip_range(IPv4Network,DN42_valid_ipv4s,paramaters["peerIPV4"],"DN42 ip")
         peerIPV4_info = DN42whois.proc_data((await whois_query(paramaters["peerIPV4"])))
