@@ -740,6 +740,28 @@ def check_wg_key(wgkey):
     if len(key_raw) != 32:
         raise ValueError(f"Wireguard key {wgkey} are not {wg_keylen} bytes len")
 
+async def check_asn_ip(admin,asn,ip,af,allowed,descr):
+    check_valid_ip_range(af,allowed,ip,descr)
+    peerIP_info = DN42whois.proc_data((await whois_query(ip)))
+    if "origin" not in peerIP_info or len(peerIP_info["origin"]) == 0:
+        originASN = "nobody"
+    else:
+        originASN = peerIP_info["origin"][0]
+    origin_check_pass = False
+    for origin in peerIP_info["origin"]:
+        if origin == paramaters["peerASN"]:
+            origin_check_pass = True
+    if origin_check_pass:
+        pass
+    elif mntner == peerIP_info["mnt-by"][0] and mntner != "DN42-MNT":
+        pass
+    elif admin == peerIP_info["admin-c"][0]:
+        pass
+    else:
+        ipowner = peerIP_info["admin-c"][0]
+        raise PermissionError("IP " + ip + f" owned by {originASN}({ipowner}) instead of {asn}({admin})")
+    return True
+
 async def check_reg_paramater(paramaters,skip_check=None,git_pull=True,allow_invalid_as=False):
     if (paramaters["hasIPV4"] or paramaters["hasIPV4LL"] or paramaters["hasIPV6"] or paramaters["hasIPV6LL"]) == False:
         raise ValueError("You can't peer without any IP.")
@@ -753,53 +775,15 @@ async def check_reg_paramater(paramaters,skip_check=None,git_pull=True,allow_inv
         else:
             raise e
     if paramaters["hasIPV4"]:
-        check_valid_ip_range(IPv4Network,DN42_valid_ipv4s,paramaters["peerIPV4"],"DN42 ip")
-        peerIPV4_info = DN42whois.proc_data((await whois_query(paramaters["peerIPV4"])))
         if paramaters["myIPV4"] == None:
             raise NotImplementedError("Sorry, I don't have IPv4 address.")
-        if "origin" not in peerIPV4_info or len(peerIPV4_info["origin"]) == 0:
-            originASN = "nobody"
-        else:
-            originASN = peerIPV4_info["origin"][0]
-
-        origin_check_pass = False
-        for origin in peerIPV4_info["origin"]:
-            if origin == paramaters["peerASN"]:
-                origin_check_pass = True
-        if origin_check_pass:
-            pass
-        elif mntner == peerIPV4_info["mnt-by"][0] and mntner != "DN42-MNT":
-            pass
-        elif admin == peerIPV4_info["admin-c"][0]:
-            pass
-        else:
-            ipowner = peerIPV4_info["admin-c"][0]
-            raise PermissionError("IP " + paramaters["peerIPV4"] + f" owned by {originASN}({ipowner}) instead of {paramaters['peerASN']}({admin})") 
+        check_asn_ip(admin,paramaters['peerASN'],IPv4Network,DN42_valid_ipv4s,paramaters["peerIPV4"],"DN42 ip")
     else:
         paramaters["peerIPV4"] = None
     if paramaters["hasIPV6"]:
-        check_valid_ip_range(IPv6Network,DN42_valid_ipv6s,paramaters["peerIPV6"],"DN42 ipv6")
-        peerIPV6_info = DN42whois.proc_data((await whois_query(paramaters["peerIPV6"])))
         if paramaters["myIPV6"] == None:
             raise NotImplementedError("Sorry, I don't have IPv6 address.")
-        if "origin" not in peerIPV6_info or len(peerIPV6_info["origin"]) == 0:
-            originASN = "nobody"
-        else:
-            originASN = peerIPV6_info["origin"][0]
-            
-        origin_check_pass = False
-        for origin in peerIPV6_info["origin"]:
-            if origin == paramaters["peerASN"]:
-                origin_check_pass = True
-        if origin_check_pass:
-            pass
-        elif mntner == peerIPV4_info["mnt-by"][0] and mntner != "DN42-MNT":
-            pass
-        elif admin == peerIPV4_info["admin-c"][0]:
-            pass
-        else:
-            ipowner = peerIPV4_info["admin-c"][0]
-            raise PermissionError("IP " + paramaters["peerIPV4"] + f" owned by {originASN}({ipowner}) instead of {paramaters['peerASN']}({admin})")
+        check_asn_ip(admin,paramaters['peerASN'],IPv6Network,DN42_valid_ipv6s,paramaters["peerIPV6"],"DN42 ipv6")
     else:
         paramaters["peerIPV6"] = None
         
@@ -808,7 +792,10 @@ async def check_reg_paramater(paramaters,skip_check=None,git_pull=True,allow_inv
             raise NotImplementedError("Sorry, I don't have IPv4 link-local address.")
         if paramaters["myIPV4LL"] == paramaters["peerIPV4LL"]:
             raise ValueError("Conflict. Your IPv4 link-local address are conflict with my IPv4 link-local address.")
-        check_valid_ip_range(IPv4Network,valid_ipv4_lilos,paramaters["peerIPV4LL"],"link-local ipv4")
+        try:
+            check_asn_ip(admin,paramaters['peerASN'],IPv4Network,DN42_valid_ipv4s,paramaters["peerIPV4LL"],"DN42 ip")
+        except ValueError as e:
+            check_valid_ip_range(IPv4Network,valid_ipv4_lilos,paramaters["peerIPV4LL"],"link-local ipv4")
         check_valid_ip_range(IPv4Network,valid_ipv4_lilos,paramaters["myIPV4LL"],"link-local ipv4")
     else:
         paramaters["peerIPV4LL"] = None
@@ -817,7 +804,10 @@ async def check_reg_paramater(paramaters,skip_check=None,git_pull=True,allow_inv
             raise NotImplementedError("Sorry, I don't have IPv6 link-local address.")
         if paramaters["myIPV6LL"] == paramaters["peerIPV6LL"]:
             raise ValueError("Conflict. Your IPv6 link-local address are conflict with my IPv6 link-local address.")
-        check_valid_ip_range(IPv6Network,valid_ipv6_lilos,paramaters["peerIPV6LL"],"link-local ipv6")
+        try:
+            check_asn_ip(admin,paramaters['peerASN'],IPv6Network,DN42_valid_ipv6s,paramaters["peerIPV6LL"],"DN42 ipv6")
+        except ValueError as e:
+            check_valid_ip_range(IPv6Network,valid_ipv6_lilos,paramaters["peerIPV6LL"],"link-local ipv6")
         check_valid_ip_range(IPv6Network,valid_ipv6_lilos,paramaters["myIPV6LL"],"link-local ipv6")
     else:
         paramaters["peerIPV6LL"] = None
