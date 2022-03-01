@@ -55,6 +55,9 @@ if args.envfile:
     
 confpath = "my_config.yaml"
 parmpath = "my_parameters.yaml"
+
+peerHostDisplayText = "(Peer endpoint hidden, authenticate to show.)"
+
 if args.config:
     confpath = args.config
 if args.parms:
@@ -100,10 +103,12 @@ try_read_env(my_paramaters,"myIPV4LL",'DN42_IPV4_LL')
 try_read_env(my_paramaters,"myIPV6LL",'DN42_IPV6_LL')
 try_read_env(my_paramaters,"myHost",'DN42AP_ENDPOINT')
 try_read_env(my_paramaters,"myHostDisplay",'DN42AP_HOST_DISPLAY')
-try_read_env(my_paramaters,"myHostHidden",'DN42AP_HOST_HIDDEN',bool,False)
 try_read_env(my_paramaters,"myASN",'DN42_E_AS')
 try_read_env(my_paramaters,"myContact",'DN42_CONTACT')
 try_read_env(my_paramaters,"allowExtNh",'DN42AP_ALLOW_ENH',bool,False)
+try_read_env(my_config,"myHostHidden",'DN42AP_HOST_HIDDEN',bool,False)
+try_read_env(my_config,"peerEndpointHidden",'DN42AP_PEER_ENDPOINT_HIDDEN',bool,False)
+try_read_env(my_config,"registerAdminOnly",'DN42AP_REGISTER_ADMINONLY',bool,False)
 try_read_env(my_config,"html_title",'DN42AP_TITLE')
 try_read_env(my_config,"git_repo_url",'DN42AP_GIT_REPO_URL')
 try_read_env(my_config,"listen_host",'DN42AP_LISTEN_HOST')
@@ -312,6 +317,7 @@ async def get_html(paramaters,peerSuccess=False):
     hasHost = paramaters["hasHost"]
     hasHost_Readonly = ""
     peerHost = paramaters["peerHost"]
+    peerHostDisplay = peerHostDisplayText
     peerWG_Pub_Key = paramaters["peerWG_Pub_Key"]
     peerWG_PS_Key = paramaters["peerWG_PS_Key"]
     peerContact = paramaters["peerContact"]
@@ -353,6 +359,15 @@ async def get_html(paramaters,peerSuccess=False):
     if not (myIPV4!="") and (myIPV6!="" or myIPV6LL!=""):
         MP_BGP_Disabled = "disabled"
         Ext_Nh_Disabled = "disabled"
+    if my_config["peerEndpointHidden"]:
+        if peer_signature != "" and peer_signature != None:
+            try:
+                mntner = await verify_user_signature(paramaters["peerASN"],paramaters["peer_plaintext"],paramaters["peer_pub_key_pgp"],peer_signature)
+                peerHostDisplay = peerHost
+            except Exception as e:
+                pass
+    else:
+        peerHostDisplay = peerHost
     if myHost == "":
         hasHost = True
         hasHost_Readonly = 'onclick="alert(\\"Sorry, I don\'t have a public IP so that your endpoint can\'t be null.\\");return false;"'
@@ -363,7 +378,7 @@ async def get_html(paramaters,peerSuccess=False):
             myHostDisplay = "(Register to get the endpoint) :"
         else:
             myHostDisplay = "(Authenticate to show the endpoint) :"
-        if my_paramaters["myHostHidden"]:
+        if my_config["myHostHidden"]:
             if peer_signature != "" and peer_signature != None:
                 try:
                     mntner = await verify_user_signature(paramaters["peerASN"],paramaters["peer_plaintext"],paramaters["peer_pub_key_pgp"],peer_signature)
@@ -441,7 +456,7 @@ async def get_html(paramaters,peerSuccess=False):
    <tr><td><input type="checkbox" name="MP_BGP" {"checked" if MP_BGP else ""} {MP_BGP_Disabled} >Multiprotocol BGP</td><td></td></tr>
    <tr><td><input type="checkbox" name="Ext_Nh" {"checked" if Ext_Nh else ""} {Ext_Nh_Disabled} >Extended next hop</td><td></td></tr>
    <tr><td><h5>Wireguard Connection Info:</h5></td><td>  </td></tr>
-   <tr><td><input type="checkbox" name="hasHost" {"checked" if hasHost else ""} {hasHost_Readonly}>Your Clearnet Endpoint (domain or ip:port)</td><td><input type="text" value="{peerHost if peerHost != None else ""}" name="peerHost" /></td></tr>
+   <tr><td><input type="checkbox" name="hasHost" {"checked" if hasHost else ""} {hasHost_Readonly}>Your Clearnet Endpoint (domain or ip:port)</td><td><input type="text" value="{peerHostDisplay if peerHost != None else ""}" name="peerHost" /></td></tr>
    <tr><td>Your Wireguard Public Key</td><td><input type="text" value="{peerWG_Pub_Key}" name="peerWG_Pub_Key" /></td></tr>
    <tr><td>Your Wireguard Pre-Shared Key (Optional)</td><td><input type="text" value="{peerWG_PS_Key}" name="peerWG_PS_Key" /></td></tr>
    <tr><td>Your Telegram ID or e-mail</td><td><input type="text" value="{peerContact}" name="peerContact" /></td></tr>
@@ -1376,6 +1391,15 @@ def isFormTrue(inp):
         return True
     return False
 
+def try_get_param(peerID,key,default=""):
+    try:
+        peerInfo = yaml.load(open(wgconfpath + "/peerinfo/" + str(peerID) + ".yaml").read(),Loader=yaml.SafeLoader)
+    except FileNotFoundError as e:
+        return default
+    if key in peerInfo:
+        return peerInfo[key]
+    return default
+
 def get_paramaters(paramaters,isAdmin=False):
     action                         = get_key_default(paramaters,"action","OK")
     paramaters = { valid_key: paramaters[valid_key] for valid_key in client_valid_keys if (valid_key in paramaters)  }
@@ -1412,6 +1436,8 @@ def get_paramaters(paramaters,isAdmin=False):
     paramaters["peerName"]         = get_key_default(paramaters,"peerName",None)
     paramaters["PeerID"]           = get_key_default(paramaters,"PeerID",None)
     paramaters["myWG_Pub_Key"]     = wgpri2pub(paramaters["myWG_Pri_Key"])
+    if paramaters["peerHost"] == peerHostDisplayText:
+        paramaters["peerHost"] = try_get_param(paramaters["PeerID"],"peerHost","")
     #print(yaml.safe_dump(paramaters))
     paramaters = {**my_paramaters,**paramaters} 
     return action , paramaters
@@ -1508,6 +1534,8 @@ async def action(paramaters):
             mntner = await verify_user_signature(paramaters["peerASN"],paramaters["peer_plaintext"],paramaters["peer_pub_key_pgp"],paramaters["peer_signature"])
             if mntner != my_config["admin_mnt"]:
                 paramaters["PeerID"] = None
+                if my_config["registerAdminOnly"]:
+                    raise PermissionError("Guest registration is not enabled at this node, please contact admin.")
             paramaters = await check_reg_paramater(paramaters)
             new_config = newConfig(paramaters)
             if mntner == my_config["admin_mnt"]:
