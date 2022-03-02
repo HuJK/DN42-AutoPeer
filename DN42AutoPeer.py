@@ -56,7 +56,7 @@ if args.envfile:
 confpath = "my_config.yaml"
 parmpath = "my_parameters.yaml"
 
-peerHostDisplayText = "(Peer endpoint hidden, authenticate to show.)"
+peerHostDisplayText = "(Peer endpoint hidden, authenticate to show)"
 
 if args.config:
     confpath = args.config
@@ -293,7 +293,7 @@ def wgpri2pub(pri):
     except Exception as e:
         return "Wireguard Key: " + str(e)
 
-async def get_html(paramaters,peerSuccess=False):
+async def get_html(paramaters,action="OK",peerSuccess=False):
     peer_plaintext = paramaters["peer_plaintext"]
     peer_pub_key_pgp = paramaters["peer_pub_key_pgp"]
     peer_signature = paramaters["peer_signature"]
@@ -359,7 +359,7 @@ async def get_html(paramaters,peerSuccess=False):
     if not (myIPV4!="") and (myIPV6!="" or myIPV6LL!=""):
         MP_BGP_Disabled = "disabled"
         Ext_Nh_Disabled = "disabled"
-    if my_config["peerEndpointHidden"]:
+    if my_config["peerEndpointHidden"] and action == "Show":
         if peer_signature != "" and peer_signature != None:
             try:
                 mntner = await verify_user_signature(paramaters["peerASN"],paramaters["peer_plaintext"],paramaters["peer_pub_key_pgp"],peer_signature)
@@ -1112,7 +1112,7 @@ def newConfig(paramaters,overwrite=False):
         if Ext_Nh == True:
             pass # setupsh += f"ip addr add {myIPV4}/32 dev {if_name}\n"
         elif peerIPV4 != None:
-            setupsh += f"ip addr add {myIPV4} peer {peerIPV4} dev {if_name}\n"
+            setupsh += f"ip addr add {myIPV4} peer {peerIPV4} dev {if_name} scope link\n"
             if MP_BGP == False:
                 birdPeerV4 = peerIPV4
         else:
@@ -1426,8 +1426,6 @@ def get_paramaters(paramaters,isAdmin=False):
     paramaters["peerName"]         = get_key_default(paramaters,"peerName",None)
     paramaters["PeerID"]           = get_key_default(paramaters,"PeerID",None)
     paramaters["myWG_Pub_Key"]     = wgpri2pub(paramaters["myWG_Pri_Key"])
-    if paramaters["peerHost"] == peerHostDisplayText:
-        paramaters["peerHost"] = try_get_param(paramaters["PeerID"],"peerHost","")
     #print(yaml.safe_dump(paramaters))
     paramaters = {**my_paramaters,**paramaters} 
     return action , paramaters
@@ -1466,8 +1464,8 @@ async def action(paramaters):
                     paramaters["myWG_Pub_Key"] = peerInfo["myWG_Pub_Key"]
                 except Exception as e:
                     pass
-            return 200, await get_html(paramaters,peerSuccess=False)
-        if action == "Check My Info" or action == "Show":
+            return 200, await get_html(paramaters,action=action,peerSuccess=False)
+        if action == "Show":
             if paramaters["PeerID"] == None:
                 raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), "")
             try:
@@ -1484,7 +1482,7 @@ async def action(paramaters):
             if bool(paramaters["peer_signature"]):
                 del peerInfo["peer_signature"]
             paramaters = {**paramaters,**peerInfo}
-            return 200, await get_html(paramaters,peerSuccess=True)
+            return 200, await get_html(paramaters,action=action,peerSuccess=True)
         # Check ASN is valid for following action
         if paramaters["peerASN"] == None:
             raise ValueError("peerASN can't be null.")
@@ -1496,6 +1494,8 @@ async def action(paramaters):
         #Actions need ASN
         if action=="Delete" or action=="Update":
             mntner = await verify_user_signature(paramaters["peerASN"],paramaters["peer_plaintext"],paramaters["peer_pub_key_pgp"],paramaters["peer_signature"])
+            if paramaters["peerHost"] == peerHostDisplayText:
+                paramaters["peerHost"] = try_get_param(paramaters["PeerID"],"peerHost","")
             try:
                 peerInfo = yaml.load(open(wgconfpath + "/peerinfo/" + paramaters["PeerID"] + ".yaml").read(),Loader=yaml.SafeLoader)
             except FileNotFoundError as e:
