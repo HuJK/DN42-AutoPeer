@@ -101,6 +101,10 @@ try_read_env(my_paramaters,"myIPV4",'DN42_IPV4')
 try_read_env(my_paramaters,"myIPV6",'DN42_IPV6')
 try_read_env(my_paramaters,"myIPV4LL",'DN42_IPV4_LL')
 try_read_env(my_paramaters,"myIPV6LL",'DN42_IPV6_LL')
+try_read_env(my_paramaters,"myIPV4",'DN42AP_MY_IPV4')
+try_read_env(my_paramaters,"myIPV6",'DN42AP_MY_IPV6')
+try_read_env(my_paramaters,"myIPV4LL",'DN42AP_MY_IPV4_LL')
+try_read_env(my_paramaters,"myIPV6LL",'DN42AP_MY_IPV6_LL')
 try_read_env(my_paramaters,"myHost",'DN42AP_ENDPOINT')
 try_read_env(my_paramaters,"myHostDisplay",'DN42AP_HOST_DISPLAY')
 try_read_env(my_paramaters,"myASN",'DN42_E_AS')
@@ -156,8 +160,8 @@ bdconfpath = my_config["bdconfpath"]
 
 pathlib.Path(wgconfpath + "/peerinfo").mkdir(parents=True, exist_ok=True)
 
-client_valid_keys = ["peer_plaintext","peer_pub_key_pgp","peer_signature", "peerASN","peerName", "hasIPV4", "peerIPV4","hasIPV4LL","peerIPV4LL", "hasIPV6", "peerIPV6", "hasIPV6LL", "peerIPV6LL","MP_BGP","Ext_Nh", "hasHost", "peerHost", "peerWG_Pub_Key","peerWG_PS_Key", "peerContact", "PeerID","myIPV4LL","myIPV6LL","customDevice","customDeviceSetup","myWG_Pri_Key","transitMode","myWG_MTU"]
-client_valid_keys_admin_only = ["customDevice","customDeviceSetup","myWG_Pri_Key","peerName"]
+client_valid_keys = ["peer_plaintext","peer_pub_key_pgp","peer_signature", "peerASN","peerName", "hasIPV4", "peerIPV4","hasIPV4LL","peerIPV4LL", "hasIPV6", "peerIPV6", "hasIPV6LL", "peerIPV6LL","MP_BGP","Ext_Nh", "hasHost", "peerHost", "peerWG_Pub_Key","peerWG_PS_Key", "peerContact", "PeerID","myIPV4","myIPV6","myIPV4LL","myIPV6LL","customDevice","customDeviceSetup","myWG_Pri_Key","transitMode","myWG_MTU"]
+client_valid_keys_admin_only = ["customDevice","customDeviceSetup","myWG_Pri_Key","peerName","myIPV4","myIPV6"]
 dn42repo_base = my_config["dn42repo_base"]
 DN42_valid_ipv4s = my_config["DN42_valid_ipv4s"]
 DN42_valid_ipv6s = my_config["DN42_valid_ipv6s"]
@@ -1409,6 +1413,8 @@ def get_paramaters(paramaters,isAdmin=False):
     paramaters["peerIPV6"]         = get_key_default(paramaters,"peerIPV6",None)
     paramaters["hasIPV6LL"]        = get_key_default(paramaters,"hasIPV6LL",False)
     paramaters["peerIPV6LL"]       = get_key_default(paramaters,"peerIPV6LL",None)
+    paramaters["myIPV4"]           = get_key_default(paramaters,"myIPV4",my_paramaters["myIPV4"]) if my_paramaters["myIPV4"] != "" else ""
+    paramaters["myIPV6"]           = get_key_default(paramaters,"myIPV6",my_paramaters["myIPV6"]) if my_paramaters["myIPV6"] != "" else ""
     paramaters["myIPV4LL"]         = get_key_default(paramaters,"myIPV4LL",my_paramaters["myIPV4LL"]) if my_paramaters["myIPV4LL"] != "" else ""
     paramaters["myIPV6LL"]         = get_key_default(paramaters,"myIPV6LL",my_paramaters["myIPV6LL"]) if my_paramaters["myIPV6LL"] != "" else ""
     paramaters["myWG_Pri_Key"]     = get_key_default(paramaters,"myWG_Pri_Key",my_config["myWG_Pri_Key"])
