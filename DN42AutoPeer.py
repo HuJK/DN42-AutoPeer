@@ -1565,9 +1565,14 @@ async def action(paramaters):
         print(traceback.format_exc())
         return errcode, get_err_page(paramaters,title,e)
 
-ipv4s = [ipaddress.ip_network(n) for n in requests.get("https://www.cloudflare.com/ips-v4").text.split("\n")]
-ipv6s = [ipaddress.ip_network(n) for n in requests.get("https://www.cloudflare.com/ips-v6").text.split("\n")]
-
+try:
+    ipv4s = [ipaddress.ip_network(n) for n in requests.get("https://www.cloudflare.com/ips-v4", verify=False, timeout=3).text.split("\n")]
+    ipv6s = [ipaddress.ip_network(n) for n in requests.get("https://www.cloudflare.com/ips-v6", verify=False, timeout=3).text.split("\n")]
+except Exception as e:
+    print(traceback.format_exc())
+    ipv4s = [ipaddress.ip_network("0.0.0.0/0")]
+    ipv6s = [ipaddress.ip_network("::/0")]
+    
 def get_ip(r):
     rip = ipaddress.ip_address( r.remote_ip )
     if type(rip) == ipaddress.IPv4Address:
@@ -1575,7 +1580,7 @@ def get_ip(r):
     else:
         clist = ipv6s
     for c in clist:
-        if rip in c:
+        if rip in c and "CF-Connecting-IP" in r.headers:
             return r.headers["CF-Connecting-IP"]
     return r.remote_ip
 
