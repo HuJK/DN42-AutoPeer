@@ -160,8 +160,8 @@ bdconfpath = my_config["bdconfpath"]
 
 pathlib.Path(wgconfpath + "/peerinfo").mkdir(parents=True, exist_ok=True)
 
-client_valid_keys = ["peer_plaintext","peer_pub_key_pgp","peer_signature", "peerASN","peerName", "hasIPV4", "peerIPV4","hasIPV4LL","peerIPV4LL", "hasIPV6", "peerIPV6", "hasIPV6LL", "peerIPV6LL","MP_BGP","Ext_Nh", "hasHost", "peerHost", "peerWG_Pub_Key","peerWG_PS_Key", "peerContact", "PeerID","myIPV4","myIPV6","myIPV4LL","myIPV6LL","customDevice","customDeviceSetup","myWG_Pri_Key","transitMode","myWG_MTU"]
-client_valid_keys_admin_only = ["customDevice","customDeviceSetup","myWG_Pri_Key","peerName","myIPV4","myIPV6"]
+client_valid_keys = ["peer_plaintext","peer_pub_key_pgp","peer_signature", "peerASN","peerName", "hasIPV4", "peerIPV4","hasIPV4LL","peerIPV4LL", "hasIPV6", "peerIPV6", "hasIPV6LL", "peerIPV6LL","MP_BGP","Ext_Nh", "hasHost", "peerHost", "peerWG_Pub_Key","peerWG_PS_Key", "peerContact", "PeerID","myIPV4","myIPV6","myIPV4LL","myIPV6LL","customDevice","customDeviceSetup","myWG_Pri_Key","transitMode","myWG_MTU","birdAddConf"]
+client_valid_keys_admin_only = ["customDevice","customDeviceSetup","myWG_Pri_Key","peerName","myIPV4","myIPV6","birdAddConf"]
 dn42repo_base = my_config["dn42repo_base"]
 DN42_valid_ipv4s = my_config["DN42_valid_ipv4s"]
 DN42_valid_ipv6s = my_config["DN42_valid_ipv6s"]
@@ -1026,6 +1026,7 @@ def newConfig(paramaters,overwrite=False):
     myasn = paramaters["myASN"][2:]
     privkey = paramaters["myWG_Pri_Key"]
     publkey = paramaters["myWG_Pub_Key"]
+    birdAddConf = paramaters["birdAddConf"]
     mtu = paramaters["myWG_MTU"]
     customDevice = paramaters["customDevice"]
     customDeviceSetup = paramaters["customDeviceSetup"]
@@ -1167,6 +1168,18 @@ def newConfig(paramaters,overwrite=False):
         filter6e += get_peeronly_filter("o",6,peerASN,myasn,False)
     else:
         raise ValueError("Unknow transitMode: " + transitMode)
+    if "chan4" in birdAddConf:
+        channel4 += "\n".join(birdAddConf["chan4"]) + "\n"
+    if "chan6" in birdAddConf:
+        channel6 += "\n".join(birdAddConf["chan6"]) + "\n"
+    if "filter4i" in birdAddConf:
+        filter4i += "\n".join(birdAddConf["filter4i"]) + "\n"
+    if "filter6i" in birdAddConf:
+        filter4e += "\n".join(birdAddConf["filter6i"]) + "\n"
+    if "filter4e" in birdAddConf:
+        filter6i += "\n".join(birdAddConf["filter4e"]) + "\n"
+    if "filter6e" in birdAddConf:
+        filter6e += "\n".join(birdAddConf["filter6e"]) + "\n"
     #########################
     if filter4i != "":
         channel4 += textwrap.dedent(f"""\
@@ -1366,16 +1379,18 @@ def updateConfig(peerID,peerName,new_config,deleteDevice=True,sync=True):
     if sync:
         RRstate_repo.push(f'{node_name} peer update {peerName}')
 
-def get_key_default(D,k,d):
-    if k in D and D[k] != "" and D[k] != None:
-        ValType = type(d)
-        if ValType == bool and type(D[k]) == str:
-            return D[k].lower() == "true" or D[k].lower() == "on"
-        elif d != None:
-            return ValType(D[k])
+def get_key_default(Dictn,key,default):
+    if key in Dictn and Dictn[key] != "" and Dictn[key] != None:
+        ValType = type(default)
+        if ValType == bool and type(Dictn[key]) == str:
+            return Dictn[key].lower() == "true" or Dictn[key].lower() == "on"
+        if (ValType == dict or ValType == list) and type(Dictn[key]) == str:
+            return json.loads(type(Dictn[key]))
+        elif default != None:
+            return ValType(Dictn[key])
         else:
-            return D[k]
-    return d
+            return Dictn[key]
+    return default
 
 def qsd2d(qsd):
     return {k:v[0] for k,v in qsd.items()}
@@ -1431,6 +1446,8 @@ def get_paramaters(paramaters,isAdmin=False):
     paramaters["peerContact"]      = get_key_default(paramaters,"peerContact","")
     paramaters["peerName"]         = get_key_default(paramaters,"peerName",None)
     paramaters["PeerID"]           = get_key_default(paramaters,"PeerID",None)
+    paramaters["birdAddConf"]      = get_key_default(paramaters,"birdAddConf",{})
+    
     paramaters["myWG_Pub_Key"]     = wgpri2pub(paramaters["myWG_Pri_Key"])
     #print(yaml.safe_dump(paramaters))
     paramaters = {**my_paramaters,**paramaters} 
