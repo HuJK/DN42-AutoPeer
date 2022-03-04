@@ -30,6 +30,7 @@ import tornado.ioloop
 import multiprocessing
 from urllib import parse
 import tornado.httpclient
+import requests.packages.urllib3
 from Crypto.PublicKey import RSA
 from ipaddress import IPv4Network
 from ipaddress import IPv6Network
@@ -37,6 +38,8 @@ from subprocess import Popen, PIPE, STDOUT
 from tornado.httpclient import HTTPClientError
 import DN42whois 
 from DN42GIT import DN42GIT
+
+requests.packages.urllib3.disable_warnings()
 
 import argparse
 parser = argparse.ArgumentParser()
@@ -182,20 +185,20 @@ echo -n "{text2sign}" | ssh-keygen -Y sign -n dn42ap -f ~/.ssh/id_ed25519
 "pgp-fingerprint": """<h4>Paste following command to your terminal to get your PGP public key and signature.</h4>
 <code>
 # Export PGP public key<br>
-gpg --armor --export<br>
+gpg --armor --export --fingerprint {fingerprint}<br>
 <br>
 # sign message with your PGP private key<br>
-echo -n "{text2sign}" | gpg --clearsign --detach-sign<br>
+echo -n "{text2sign}" | gpg --clearsign --detach-sign -u {fingerprint}<br>
 <br>
 # Done. You can copy the signature now<br>
 </code>""",
 "PGPKEY": """<h4>Paste following command to your terminal to get your PGP public key and signature.</h4>
 <code>
 # Export PGP public key<br>
-gpg --armor --export<br>
+gpg --armor --export --fingerprint {fingerprint}<br>
 <br>
 # sign message with your PGP private key<br>
-echo -n "{text2sign}" | gpg --clearsign --detach-sign<br>
+echo -n "{text2sign}" | gpg --clearsign --detach-sign -u {fingerprint}<br>
 <br>
 # Done. You can copy the signature now<br>
 </code>"""
@@ -262,7 +265,7 @@ async def get_signature_html(baseURL,paramaters):
         for v_item in v:
             retstr += f"""<tr><td>{v_item}</td></tr>"""
         retstr += "</table>"
-        retstr += method_hint[m].format(text2sign = text2sign)
+        retstr += method_hint[m].format(text2sign = text2sign,fingerprint=v[0])
     retstr += "<h4>Unupported auth method: </h4>" if len(list(methods_class["Unsupported"].keys())) != 0 else ""
     for m,v in methods_class["Unsupported"].items():
         retstr += f"""<table class="table"><tr><td><b>{m}</b></td></tr>"""
