@@ -55,6 +55,9 @@ if args.envfile:
     
 confpath = "my_config.yaml"
 parmpath = "my_parameters.yaml"
+
+peerHostDisplayText = "(Peer endpoint hidden, authenticate to show)"
+
 if args.config:
     confpath = args.config
 if args.parms:
@@ -98,12 +101,18 @@ try_read_env(my_paramaters,"myIPV4",'DN42_IPV4')
 try_read_env(my_paramaters,"myIPV6",'DN42_IPV6')
 try_read_env(my_paramaters,"myIPV4LL",'DN42_IPV4_LL')
 try_read_env(my_paramaters,"myIPV6LL",'DN42_IPV6_LL')
+try_read_env(my_paramaters,"myIPV4",'DN42AP_MY_IPV4')
+try_read_env(my_paramaters,"myIPV6",'DN42AP_MY_IPV6')
+try_read_env(my_paramaters,"myIPV4LL",'DN42AP_MY_IPV4_LL')
+try_read_env(my_paramaters,"myIPV6LL",'DN42AP_MY_IPV6_LL')
 try_read_env(my_paramaters,"myHost",'DN42AP_ENDPOINT')
 try_read_env(my_paramaters,"myHostDisplay",'DN42AP_HOST_DISPLAY')
-try_read_env(my_paramaters,"myHostHidden",'DN42AP_HOST_HIDDEN',bool,False)
 try_read_env(my_paramaters,"myASN",'DN42_E_AS')
 try_read_env(my_paramaters,"myContact",'DN42_CONTACT')
 try_read_env(my_paramaters,"allowExtNh",'DN42AP_ALLOW_ENH',bool,False)
+try_read_env(my_config,"myHostHidden",'DN42AP_HOST_HIDDEN',bool,False)
+try_read_env(my_config,"peerEndpointHidden",'DN42AP_PEER_ENDPOINT_HIDDEN',bool,False)
+try_read_env(my_config,"registerAdminOnly",'DN42AP_REGISTER_ADMINONLY',bool,False)
 try_read_env(my_config,"html_title",'DN42AP_TITLE')
 try_read_env(my_config,"git_repo_url",'DN42AP_GIT_REPO_URL')
 try_read_env(my_config,"listen_host",'DN42AP_LISTEN_HOST')
@@ -151,8 +160,8 @@ bdconfpath = my_config["bdconfpath"]
 
 pathlib.Path(wgconfpath + "/peerinfo").mkdir(parents=True, exist_ok=True)
 
-client_valid_keys = ["peer_plaintext","peer_pub_key_pgp","peer_signature", "peerASN","peerName", "hasIPV4", "peerIPV4","hasIPV4LL","peerIPV4LL", "hasIPV6", "peerIPV6", "hasIPV6LL", "peerIPV6LL","MP_BGP","Ext_Nh", "hasHost", "peerHost", "peerWG_Pub_Key","peerWG_PS_Key", "peerContact", "PeerID","myIPV4LL","myIPV6LL","customDevice","customDeviceSetup","myWG_Pri_Key","transitMode","myWG_MTU"]
-client_valid_keys_admin_only = ["customDevice","customDeviceSetup","myWG_Pri_Key","peerName"]
+client_valid_keys = ["peer_plaintext","peer_pub_key_pgp","peer_signature", "peerASN","peerName", "hasIPV4", "peerIPV4","hasIPV4LL","peerIPV4LL", "hasIPV6", "peerIPV6", "hasIPV6LL", "peerIPV6LL","MP_BGP","Ext_Nh", "hasHost", "peerHost", "peerWG_Pub_Key","peerWG_PS_Key", "peerContact", "PeerID","myIPV4","myIPV6","myIPV4LL","myIPV6LL","customDevice","customDeviceSetup","myWG_Pri_Key","transitMode","myWG_MTU","birdAddConf"]
+client_valid_keys_admin_only = ["customDevice","customDeviceSetup","myWG_Pri_Key","peerName","myIPV4","myIPV6","birdAddConf"]
 dn42repo_base = my_config["dn42repo_base"]
 DN42_valid_ipv4s = my_config["DN42_valid_ipv4s"]
 DN42_valid_ipv6s = my_config["DN42_valid_ipv6s"]
@@ -288,7 +297,7 @@ def wgpri2pub(pri):
     except Exception as e:
         return "Wireguard Key: " + str(e)
 
-async def get_html(paramaters,peerSuccess=False):
+async def get_html(paramaters,action="OK",peerSuccess=False):
     peer_plaintext = paramaters["peer_plaintext"]
     peer_pub_key_pgp = paramaters["peer_pub_key_pgp"]
     peer_signature = paramaters["peer_signature"]
@@ -312,6 +321,7 @@ async def get_html(paramaters,peerSuccess=False):
     hasHost = paramaters["hasHost"]
     hasHost_Readonly = ""
     peerHost = paramaters["peerHost"]
+    peerHostDisplay = peerHostDisplayText
     peerWG_Pub_Key = paramaters["peerWG_Pub_Key"]
     peerWG_PS_Key = paramaters["peerWG_PS_Key"]
     peerContact = paramaters["peerContact"]
@@ -353,6 +363,15 @@ async def get_html(paramaters,peerSuccess=False):
     if not (myIPV4!="") and (myIPV6!="" or myIPV6LL!=""):
         MP_BGP_Disabled = "disabled"
         Ext_Nh_Disabled = "disabled"
+    if my_config["peerEndpointHidden"] and action == "Show":
+        if peer_signature != "" and peer_signature != None:
+            try:
+                mntner = await verify_user_signature(paramaters["peerASN"],paramaters["peer_plaintext"],paramaters["peer_pub_key_pgp"],peer_signature)
+                peerHostDisplay = peerHost
+            except Exception as e:
+                pass
+    else:
+        peerHostDisplay = peerHost
     if myHost == "":
         hasHost = True
         hasHost_Readonly = 'onclick="alert(\\"Sorry, I don\'t have a public IP so that your endpoint can\'t be null.\\");return false;"'
@@ -363,7 +382,7 @@ async def get_html(paramaters,peerSuccess=False):
             myHostDisplay = "(Register to get the endpoint) :"
         else:
             myHostDisplay = "(Authenticate to show the endpoint) :"
-        if my_paramaters["myHostHidden"]:
+        if my_config["myHostHidden"]:
             if peer_signature != "" and peer_signature != None:
                 try:
                     mntner = await verify_user_signature(paramaters["peerASN"],paramaters["peer_plaintext"],paramaters["peer_pub_key_pgp"],peer_signature)
@@ -441,7 +460,7 @@ async def get_html(paramaters,peerSuccess=False):
    <tr><td><input type="checkbox" name="MP_BGP" {"checked" if MP_BGP else ""} {MP_BGP_Disabled} >Multiprotocol BGP</td><td></td></tr>
    <tr><td><input type="checkbox" name="Ext_Nh" {"checked" if Ext_Nh else ""} {Ext_Nh_Disabled} >Extended next hop</td><td></td></tr>
    <tr><td><h5>Wireguard Connection Info:</h5></td><td>  </td></tr>
-   <tr><td><input type="checkbox" name="hasHost" {"checked" if hasHost else ""} {hasHost_Readonly}>Your Clearnet Endpoint (domain or ip:port)</td><td><input type="text" value="{peerHost if peerHost != None else ""}" name="peerHost" /></td></tr>
+   <tr><td><input type="checkbox" name="hasHost" {"checked" if hasHost else ""} {hasHost_Readonly}>Your Clearnet Endpoint (domain or ip:port)</td><td><input type="text" value="{peerHostDisplay if peerHost != None else ""}" name="peerHost" /></td></tr>
    <tr><td>Your Wireguard Public Key</td><td><input type="text" value="{peerWG_Pub_Key}" name="peerWG_Pub_Key" /></td></tr>
    <tr><td>Your Wireguard Pre-Shared Key (Optional)</td><td><input type="text" value="{peerWG_PS_Key}" name="peerWG_PS_Key" /></td></tr>
    <tr><td>Your Telegram ID or e-mail</td><td><input type="text" value="{peerContact}" name="peerContact" /></td></tr>
@@ -725,60 +744,50 @@ def check_wg_key(wgkey):
     if len(key_raw) != 32:
         raise ValueError(f"Wireguard key {wgkey} are not {wg_keylen} bytes len")
 
-async def check_reg_paramater(paramaters,skip_check=None,git_pull=True):
+async def check_asn_ip(admin,asn,ip,af,allowed,descr):
+    check_valid_ip_range(af,allowed,ip,descr)
+    peerIP_info = DN42whois.proc_data((await whois_query(ip)))
+    if "origin" not in peerIP_info or len(peerIP_info["origin"]) == 0:
+        originASN = "nobody"
+    else:
+        originASN = peerIP_info["origin"][0]
+    origin_check_pass = False
+    for origin in peerIP_info["origin"]:
+        if origin == paramaters["peerASN"]:
+            origin_check_pass = True
+    if origin_check_pass:
+        pass
+    elif mntner == peerIP_info["mnt-by"][0] and mntner != "DN42-MNT":
+        pass
+    elif admin == peerIP_info["admin-c"][0]:
+        pass
+    else:
+        ipowner = peerIP_info["admin-c"][0]
+        raise PermissionError("IP " + ip + f" owned by {originASN}({ipowner}) instead of {asn}({admin})")
+    return True
+
+async def check_reg_paramater(paramaters,skip_check=None,git_pull=True,allow_invalid_as=False):
     if (paramaters["hasIPV4"] or paramaters["hasIPV4LL"] or paramaters["hasIPV6"] or paramaters["hasIPV6LL"]) == False:
         raise ValueError("You can't peer without any IP.")
     if paramaters["peerASN"] == "AS" + paramaters["myASN"]:
         raise ValueError("You can't peer with my ASN.")
-    mntner,admin = await get_info_from_asn(paramaters["peerASN"])
+    try:
+        mntner,admin = await get_info_from_asn(paramaters["peerASN"])
+    except FileNotFoundError as e:
+        if allow_invalid_as:
+            mntner,admin = ["DN42-MNT","BURBLE-DN42"]
+        else:
+            raise e
     if paramaters["hasIPV4"]:
-        check_valid_ip_range(IPv4Network,DN42_valid_ipv4s,paramaters["peerIPV4"],"DN42 ip")
-        peerIPV4_info = DN42whois.proc_data((await whois_query(paramaters["peerIPV4"])))
         if paramaters["myIPV4"] == None:
             raise NotImplementedError("Sorry, I don't have IPv4 address.")
-        if "origin" not in peerIPV4_info or len(peerIPV4_info["origin"]) == 0:
-            originASN = "nobody"
-        else:
-            originASN = peerIPV4_info["origin"][0]
-
-        origin_check_pass = False
-        for origin in peerIPV4_info["origin"]:
-            if origin == paramaters["peerASN"]:
-                origin_check_pass = True
-        if origin_check_pass:
-            pass
-        elif mntner == peerIPV4_info["mnt-by"][0] and mntner != "DN42-MNT":
-            pass
-        elif admin == peerIPV4_info["admin-c"][0]:
-            pass
-        else:
-            ipowner = peerIPV4_info["admin-c"][0]
-            raise PermissionError("IP " + paramaters["peerIPV4"] + f" owned by {originASN}({ipowner}) instead of {paramaters['peerASN']}({admin})") 
+        check_asn_ip(admin,paramaters['peerASN'],IPv4Network,DN42_valid_ipv4s,paramaters["peerIPV4"],"DN42 ip")
     else:
         paramaters["peerIPV4"] = None
     if paramaters["hasIPV6"]:
-        check_valid_ip_range(IPv6Network,DN42_valid_ipv6s,paramaters["peerIPV6"],"DN42 ipv6")
-        peerIPV6_info = DN42whois.proc_data((await whois_query(paramaters["peerIPV6"])))
         if paramaters["myIPV6"] == None:
             raise NotImplementedError("Sorry, I don't have IPv6 address.")
-        if "origin" not in peerIPV6_info or len(peerIPV6_info["origin"]) == 0:
-            originASN = "nobody"
-        else:
-            originASN = peerIPV6_info["origin"][0]
-            
-        origin_check_pass = False
-        for origin in peerIPV6_info["origin"]:
-            if origin == paramaters["peerASN"]:
-                origin_check_pass = True
-        if origin_check_pass:
-            pass
-        elif mntner == peerIPV4_info["mnt-by"][0] and mntner != "DN42-MNT":
-            pass
-        elif admin == peerIPV4_info["admin-c"][0]:
-            pass
-        else:
-            ipowner = peerIPV4_info["admin-c"][0]
-            raise PermissionError("IP " + paramaters["peerIPV4"] + f" owned by {originASN}({ipowner}) instead of {paramaters['peerASN']}({admin})")
+        check_asn_ip(admin,paramaters['peerASN'],IPv6Network,DN42_valid_ipv6s,paramaters["peerIPV6"],"DN42 ipv6")
     else:
         paramaters["peerIPV6"] = None
         
@@ -787,7 +796,10 @@ async def check_reg_paramater(paramaters,skip_check=None,git_pull=True):
             raise NotImplementedError("Sorry, I don't have IPv4 link-local address.")
         if paramaters["myIPV4LL"] == paramaters["peerIPV4LL"]:
             raise ValueError("Conflict. Your IPv4 link-local address are conflict with my IPv4 link-local address.")
-        check_valid_ip_range(IPv4Network,valid_ipv4_lilos,paramaters["peerIPV4LL"],"link-local ipv4")
+        try:
+            check_asn_ip(admin,paramaters['peerASN'],IPv4Network,DN42_valid_ipv4s,paramaters["peerIPV4LL"],"DN42 ip")
+        except ValueError as e:
+            check_valid_ip_range(IPv4Network,valid_ipv4_lilos,paramaters["peerIPV4LL"],"link-local ipv4")
         check_valid_ip_range(IPv4Network,valid_ipv4_lilos,paramaters["myIPV4LL"],"link-local ipv4")
     else:
         paramaters["peerIPV4LL"] = None
@@ -796,7 +808,10 @@ async def check_reg_paramater(paramaters,skip_check=None,git_pull=True):
             raise NotImplementedError("Sorry, I don't have IPv6 link-local address.")
         if paramaters["myIPV6LL"] == paramaters["peerIPV6LL"]:
             raise ValueError("Conflict. Your IPv6 link-local address are conflict with my IPv6 link-local address.")
-        check_valid_ip_range(IPv6Network,valid_ipv6_lilos,paramaters["peerIPV6LL"],"link-local ipv6")
+        try:
+            check_asn_ip(admin,paramaters['peerASN'],IPv6Network,DN42_valid_ipv6s,paramaters["peerIPV6LL"],"DN42 ipv6")
+        except ValueError as e:
+            check_valid_ip_range(IPv6Network,valid_ipv6_lilos,paramaters["peerIPV6LL"],"link-local ipv6")
         check_valid_ip_range(IPv6Network,valid_ipv6_lilos,paramaters["myIPV6LL"],"link-local ipv6")
     else:
         paramaters["peerIPV6LL"] = None
@@ -1011,6 +1026,7 @@ def newConfig(paramaters,overwrite=False):
     myasn = paramaters["myASN"][2:]
     privkey = paramaters["myWG_Pri_Key"]
     publkey = paramaters["myWG_Pub_Key"]
+    birdAddConf = paramaters["birdAddConf"]
     mtu = paramaters["myWG_MTU"]
     customDevice = paramaters["customDevice"]
     customDeviceSetup = paramaters["customDeviceSetup"]
@@ -1101,7 +1117,7 @@ def newConfig(paramaters,overwrite=False):
         if Ext_Nh == True:
             pass # setupsh += f"ip addr add {myIPV4}/32 dev {if_name}\n"
         elif peerIPV4 != None:
-            setupsh += f"ip addr add {myIPV4} peer {peerIPV4} dev {if_name}\n"
+            setupsh += f"ip addr add {myIPV4} peer {peerIPV4} dev {if_name} scope link\n"
             if MP_BGP == False:
                 birdPeerV4 = peerIPV4
         else:
@@ -1152,6 +1168,18 @@ def newConfig(paramaters,overwrite=False):
         filter6e += get_peeronly_filter("o",6,peerASN,myasn,False)
     else:
         raise ValueError("Unknow transitMode: " + transitMode)
+    if "chan4" in birdAddConf:
+        channel4 += "\n".join(birdAddConf["chan4"]) + "\n"
+    if "chan6" in birdAddConf:
+        channel6 += "\n".join(birdAddConf["chan6"]) + "\n"
+    if "filter4i" in birdAddConf:
+        filter4i += "\n".join(birdAddConf["filter4i"]) + "\n"
+    if "filter6i" in birdAddConf:
+        filter4e += "\n".join(birdAddConf["filter6i"]) + "\n"
+    if "filter4e" in birdAddConf:
+        filter6i += "\n".join(birdAddConf["filter4e"]) + "\n"
+    if "filter6e" in birdAddConf:
+        filter6e += "\n".join(birdAddConf["filter6e"]) + "\n"
     #########################
     if filter4i != "":
         channel4 += textwrap.dedent(f"""\
@@ -1351,16 +1379,18 @@ def updateConfig(peerID,peerName,new_config,deleteDevice=True,sync=True):
     if sync:
         RRstate_repo.push(f'{node_name} peer update {peerName}')
 
-def get_key_default(D,k,d):
-    if k in D and D[k] != "" and D[k] != None:
-        ValType = type(d)
-        if ValType == bool and type(D[k]) == str:
-            return D[k].lower() == "true" or D[k].lower() == "on"
-        elif d != None:
-            return ValType(D[k])
+def get_key_default(Dictn,key,default):
+    if key in Dictn and Dictn[key] != "" and Dictn[key] != None:
+        ValType = type(default)
+        if ValType == bool and type(Dictn[key]) == str:
+            return Dictn[key].lower() == "true" or Dictn[key].lower() == "on"
+        if (ValType == dict or ValType == list) and type(Dictn[key]) == str:
+            return json.loads(type(Dictn[key]))
+        elif default != None:
+            return ValType(Dictn[key])
         else:
-            return D[k]
-    return d
+            return Dictn[key]
+    return default
 
 def qsd2d(qsd):
     return {k:v[0] for k,v in qsd.items()}
@@ -1369,6 +1399,15 @@ def isFormTrue(inp):
     if inp == "on" or inp == "True" or inp == True:
         return True
     return False
+
+def try_get_param(peerID,key,default=""):
+    try:
+        peerInfo = yaml.load(open(wgconfpath + "/peerinfo/" + str(peerID) + ".yaml").read(),Loader=yaml.SafeLoader)
+    except FileNotFoundError as e:
+        return default
+    if key in peerInfo:
+        return peerInfo[key]
+    return default
 
 def get_paramaters(paramaters,isAdmin=False):
     action                         = get_key_default(paramaters,"action","OK")
@@ -1389,6 +1428,8 @@ def get_paramaters(paramaters,isAdmin=False):
     paramaters["peerIPV6"]         = get_key_default(paramaters,"peerIPV6",None)
     paramaters["hasIPV6LL"]        = get_key_default(paramaters,"hasIPV6LL",False)
     paramaters["peerIPV6LL"]       = get_key_default(paramaters,"peerIPV6LL",None)
+    paramaters["myIPV4"]           = get_key_default(paramaters,"myIPV4",my_paramaters["myIPV4"]) if my_paramaters["myIPV4"] != "" else ""
+    paramaters["myIPV6"]           = get_key_default(paramaters,"myIPV6",my_paramaters["myIPV6"]) if my_paramaters["myIPV6"] != "" else ""
     paramaters["myIPV4LL"]         = get_key_default(paramaters,"myIPV4LL",my_paramaters["myIPV4LL"]) if my_paramaters["myIPV4LL"] != "" else ""
     paramaters["myIPV6LL"]         = get_key_default(paramaters,"myIPV6LL",my_paramaters["myIPV6LL"]) if my_paramaters["myIPV6LL"] != "" else ""
     paramaters["myWG_Pri_Key"]     = get_key_default(paramaters,"myWG_Pri_Key",my_config["myWG_Pri_Key"])
@@ -1405,6 +1446,8 @@ def get_paramaters(paramaters,isAdmin=False):
     paramaters["peerContact"]      = get_key_default(paramaters,"peerContact","")
     paramaters["peerName"]         = get_key_default(paramaters,"peerName",None)
     paramaters["PeerID"]           = get_key_default(paramaters,"PeerID",None)
+    paramaters["birdAddConf"]      = get_key_default(paramaters,"birdAddConf",{})
+    
     paramaters["myWG_Pub_Key"]     = wgpri2pub(paramaters["myWG_Pri_Key"])
     #print(yaml.safe_dump(paramaters))
     paramaters = {**my_paramaters,**paramaters} 
@@ -1444,8 +1487,8 @@ async def action(paramaters):
                     paramaters["myWG_Pub_Key"] = peerInfo["myWG_Pub_Key"]
                 except Exception as e:
                     pass
-            return 200, await get_html(paramaters,peerSuccess=False)
-        if action == "Check My Info" or action == "Show":
+            return 200, await get_html(paramaters,action=action,peerSuccess=False)
+        if action == "Show":
             if paramaters["PeerID"] == None:
                 raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), "")
             try:
@@ -1462,7 +1505,7 @@ async def action(paramaters):
             if bool(paramaters["peer_signature"]):
                 del peerInfo["peer_signature"]
             paramaters = {**paramaters,**peerInfo}
-            return 200, await get_html(paramaters,peerSuccess=True)
+            return 200, await get_html(paramaters,action=action,peerSuccess=True)
         # Check ASN is valid for following action
         if paramaters["peerASN"] == None:
             raise ValueError("peerASN can't be null.")
@@ -1474,6 +1517,8 @@ async def action(paramaters):
         #Actions need ASN
         if action=="Delete" or action=="Update":
             mntner = await verify_user_signature(paramaters["peerASN"],paramaters["peer_plaintext"],paramaters["peer_pub_key_pgp"],paramaters["peer_signature"])
+            if paramaters["peerHost"] == peerHostDisplayText:
+                paramaters["peerHost"] = try_get_param(paramaters["PeerID"],"peerHost","")
             try:
                 peerInfo = yaml.load(open(wgconfpath + "/peerinfo/" + paramaters["PeerID"] + ".yaml").read(),Loader=yaml.SafeLoader)
             except FileNotFoundError as e:
@@ -1502,6 +1547,8 @@ async def action(paramaters):
             mntner = await verify_user_signature(paramaters["peerASN"],paramaters["peer_plaintext"],paramaters["peer_pub_key_pgp"],paramaters["peer_signature"])
             if mntner != my_config["admin_mnt"]:
                 paramaters["PeerID"] = None
+                if my_config["registerAdminOnly"]:
+                    raise PermissionError("Guest registration is not enabled at this node, please contact admin.")
             paramaters = await check_reg_paramater(paramaters)
             new_config = newConfig(paramaters)
             if mntner == my_config["admin_mnt"]:
@@ -1535,9 +1582,14 @@ async def action(paramaters):
         print(traceback.format_exc())
         return errcode, get_err_page(paramaters,title,e)
 
-ipv4s = [ipaddress.ip_network(n) for n in requests.get("https://www.cloudflare.com/ips-v4").text.split("\n")]
-ipv6s = [ipaddress.ip_network(n) for n in requests.get("https://www.cloudflare.com/ips-v6").text.split("\n")]
-
+try:
+    ipv4s = [ipaddress.ip_network(n) for n in requests.get("https://www.cloudflare.com/ips-v4", verify=False, timeout=3).text.split("\n")]
+    ipv6s = [ipaddress.ip_network(n) for n in requests.get("https://www.cloudflare.com/ips-v6", verify=False, timeout=3).text.split("\n")]
+except Exception as e:
+    print(traceback.format_exc())
+    ipv4s = [ipaddress.ip_network("0.0.0.0/0")]
+    ipv6s = [ipaddress.ip_network("::/0")]
+    
 def get_ip(r):
     rip = ipaddress.ip_address( r.remote_ip )
     if type(rip) == ipaddress.IPv4Address:
@@ -1545,7 +1597,7 @@ def get_ip(r):
     else:
         clist = ipv6s
     for c in clist:
-        if rip in c:
+        if rip in c and "CF-Connecting-IP" in r.headers:
             return r.headers["CF-Connecting-IP"]
     return r.remote_ip
 

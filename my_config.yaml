@@ -28,3 +28,6 @@ valid_ipv6_linklocals:
 wg_port_search_range: "range(20000 + peerASN % 10000 ,20100 + peerASN % 10000 )"
 init_device: true
 reset_wgconf_interval: 0
+myHostHidden: false
+peerEndpointHidden: false
+registerAdminOnly: false

@@ -4,7 +4,6 @@ myIPV4LL: ''
 myIPV6LL: ''
 myHost: ''
 myHostDisplay: ''
-myHostHidden: false
 myASN: AS4242420000
 myContact: ''
 allowExtNh: true
