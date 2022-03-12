@@ -32,7 +32,7 @@ from urllib import parse
 import tornado.httpclient
 import requests.packages.urllib3
 from Crypto.PublicKey import RSA
-from ipaddress import IPv4Network
+from ipaddress import IPv4Network , IPv6Network , IPv4Interface , IPv6Interface, IPv4Address , IPv6Address
 from ipaddress import IPv6Network
 from subprocess import Popen, PIPE, STDOUT
 from tornado.httpclient import HTTPClientError
@@ -74,7 +74,7 @@ my_config = yaml.load(open(confpath).read(),Loader=yaml.Loader)
 
 if my_config["jwt_secret"] == None:
     my_config["jwt_secret"] = ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(32))
-    # open("confpath","w").write(yaml.dump(my_config))
+    open(confpath,"w").write(yaml.dump(my_config, sort_keys=False))
 
 jwt_secret = my_config["jwt_secret"]
 
@@ -164,13 +164,13 @@ bdconfpath = my_config["bdconfpath"]
 pathlib.Path(wgconfpath + "/peerinfo").mkdir(parents=True, exist_ok=True)
 
 client_valid_keys = ["peer_plaintext","peer_pub_key_pgp","peer_signature", "peerASN","peerName", "hasIPV4", "peerIPV4","hasIPV4LL","peerIPV4LL", "hasIPV6", "peerIPV6", "hasIPV6LL", "peerIPV6LL","MP_BGP","Ext_Nh", "hasHost", "peerHost", "peerWG_Pub_Key","peerWG_PS_Key", "peerContact", "PeerID","myIPV4","myIPV6","myIPV4LL","myIPV6LL","customDevice","customDeviceSetup","myWG_Pri_Key","transitMode","myWG_MTU","birdAddConf"]
-client_valid_keys_admin_only = ["customDevice","customDeviceSetup","myWG_Pri_Key","peerName","myIPV4","myIPV6","birdAddConf"]
+client_valid_keys_admin_only = ["customDevice","customDeviceSetup","myWG_Pri_Key","peerName","birdAddConf"]
 dn42repo_base = my_config["dn42repo_base"]
 DN42_valid_ipv4s = my_config["DN42_valid_ipv4s"]
 DN42_valid_ipv6s = my_config["DN42_valid_ipv6s"]
-valid_ipv4_lilos = my_config["valid_ipv4_linklocals"]
-valid_ipv6_lilos = my_config["valid_ipv6_linklocals"]
-wg_allowed_ips = DN42_valid_ipv4s + DN42_valid_ipv6s + valid_ipv4_lilos + valid_ipv6_lilos
+valid_ipv4_lilo = my_config["valid_ipv4_linklocal"]
+valid_ipv6_lilo = my_config["valid_ipv6_linklocal"]
+wg_allowed_ips = DN42_valid_ipv4s + DN42_valid_ipv6s + [valid_ipv4_lilo , valid_ipv6_lilo ]
 whois = DN42whois.whois(*my_config["dn42_whois_server"])
 whois_query = whois.query
 
@@ -477,8 +477,8 @@ async def get_html(paramaters,action="OK",peerSuccess=False):
 <h3>{"Peer success! " if peerSuccess else "This is "}My Info</h3>
  <table>
    <tr><td>My ASN</td><td><input type="text" value="{myASN}" readonly /></td></tr>
-   <tr><td>DN42 IPv4</td><td><input type="text" value="{myIPV4}" readonly /></td></tr>
-   <tr><td>DN42 IPv6</td><td><input type="text" value="{myIPV6}" readonly /></td></tr>
+   <tr><td>DN42 IPv4</td><td><input type="text" name="myIPV4" value="{myIPV4}" /></td></tr>
+   <tr><td>DN42 IPv6</td><td><input type="text" name="myIPV6" value="{myIPV6}" /></td></tr>
    <tr><td>IPv4 Link local</td><td><input type="text" name="myIPV4LL" value="{myIPV4LL}" {hasIPV4LLDisabled} /></td></tr>
    <tr><td>IPv6 Link local</td><td><input type="text" name="myIPV6LL" value="{myIPV6LL}" {hasIPV6LLDisabled} /></td></tr>
    <tr><td>Connectrion Info: </td><td>  </td></tr>
@@ -725,17 +725,6 @@ background-color:#555555;}}
 """
     return retstr
 
-def check_valid_ip_range(IPclass,IPranges,ip,name):
-    sum = 0
-    if "/" in ip:
-        raise ValueError(ip + " is not a valid IPv4 or IPv6 address")
-    if IPclass(ip).num_addresses != 1:
-        raise ValueError(ip + " contains more than one IP")
-    for iprange in IPranges:
-        if IPclass(iprange).supernet_of(IPclass(ip)):
-            return True
-    raise ValueError(ip + " are not in acceptable " + name + " range: " + str(IPranges))
-
 def check_wg_key(wgkey):
     wg_keylen = 32
     if len(wgkey) > wg_keylen*2:
@@ -747,29 +736,56 @@ def check_wg_key(wgkey):
     if len(key_raw) != 32:
         raise ValueError(f"Wireguard key {wgkey} are not {wg_keylen} bytes len")
 
-async def check_asn_ip(admin,asn,ip,af,allowed,descr):
-    check_valid_ip_range(af,allowed,ip,descr)
+def check_valid_ip_range(af,IPranges,ip,name,only_ip = True):
+    if af == "IPv4":
+        IPNet = IPv4Network
+        IPInt = IPv4Interface
+    elif af == "IPv6":
+        IPNet = IPv6Network
+        IPInt = IPv6Interface
+    else:
+        raise ValueError("Unknown af:",af)
+    if only_ip:
+        if "/" in ip:
+            raise ValueError(ip + " is not a valid IPv4 or IPv6 address")
+        if IPNet(ip).num_addresses != 1:
+            raise ValueError(ip + " contains more than one IP")
+    for iprange in IPranges:
+        if IPNet(iprange,strict=False).supernet_of(IPInt(ip).network):
+            return True
+    raise ValueError(ip + " are not in " + name + " range: " + str(IPranges))
+
+async def check_asn_ip(admin,mntner,asn,af,ip,only_ip=True):
+    if af == "IPv4":
+        IPNet = IPv4Network
+        IPInt = IPv4Interface
+        allowed = DN42_valid_ipv4s
+        descr = "DN42 IPv4"
+    elif af == "IPv6":
+        IPNet = IPv6Network
+        IPInt = IPv6Interface
+        allowed = DN42_valid_ipv6s
+        descr = "DN42 IPv6"
+    else:
+        raise ValueError("Unknown af:",af)
+    check_valid_ip_range(af,IPranges=allowed,ip=ip,name=descr,only_ip=only_ip)
     peerIP_info = DN42whois.proc_data((await whois_query(ip)))
     if "origin" not in peerIP_info or len(peerIP_info["origin"]) == 0:
         originASN = "nobody"
     else:
         originASN = peerIP_info["origin"][0]
     origin_check_pass = False
-    for origin in peerIP_info["origin"]:
-        if origin == paramaters["peerASN"]:
-            origin_check_pass = True
-    if origin_check_pass:
-        pass
-    elif mntner == peerIP_info["mnt-by"][0] and mntner != "DN42-MNT":
-        pass
-    elif admin == peerIP_info["admin-c"][0]:
-        pass
+    if asn in peerIP_info["origin"]:
+        return True
+    elif mntner in peerIP_info["mnt-by"] and mntner != "DN42-MNT":
+        return True
+    elif admin in peerIP_info["admin-c"]:
+        return True
     else:
-        ipowner = peerIP_info["admin-c"][0]
+        ipowner = peerIP_info["admin-c"][0] if len(peerIP_info["admin-c"]) > 0 else None
         raise PermissionError("IP " + ip + f" owned by {originASN}({ipowner}) instead of {asn}({admin})")
-    return True
 
-async def check_reg_paramater(paramaters,skip_check=None,git_pull=True,allow_invalid_as=False):
+async def check_reg_paramater(paramaters,skip_check=None,git_pull=True,allow_invalid_as=False,allowed_custom_myip=[]):
     if (paramaters["hasIPV4"] or paramaters["hasIPV4LL"] or paramaters["hasIPV6"] or paramaters["hasIPV6LL"]) == False:
         raise ValueError("You can't peer without any IP.")
     if paramaters["peerASN"] == "AS" + paramaters["myASN"]:
@@ -781,41 +797,52 @@ async def check_reg_paramater(paramaters,skip_check=None,git_pull=True,allow_inv
             mntner,admin = ["DN42-MNT","BURBLE-DN42"]
         else:
             raise e
+    ######################### hasIPV4
     if paramaters["hasIPV4"]:
         if paramaters["myIPV4"] == None:
             raise NotImplementedError("Sorry, I don't have IPv4 address.")
-        check_asn_ip(admin,paramaters['peerASN'],IPv4Network,DN42_valid_ipv4s,paramaters["peerIPV4"],"DN42 ip")
+        await check_asn_ip(admin,mntner,paramaters['peerASN'],"IPv4",paramaters["peerIPV4"],only_ip=True)
+        if paramaters["myIPV4"] == my_paramaters["myIPV4"] or paramaters["myIPV4"] in allowed_custom_myip:
+            pass
+        else:
+            if "/" not in paramaters["myIPV4"]:
+                await check_asn_ip(admin,mntner,paramaters['peerASN'],"IPv4",paramaters["myIPV4"],only_ip=True)
+            else:
+                await check_asn_ip(admin,mntner,paramaters['peerASN'],"IPv4",paramaters["myIPV4"],only_ip=False)
+                check_valid_ip_range("IPv4",[paramaters["myIPV4"]],paramaters["peerIPV4"],"allocated IPv4 to me")
     else:
         paramaters["peerIPV4"] = None
+    ######################### hasIPV6
     if paramaters["hasIPV6"]:
         if paramaters["myIPV6"] == None:
             raise NotImplementedError("Sorry, I don't have IPv6 address.")
-        check_asn_ip(admin,paramaters['peerASN'],IPv6Network,DN42_valid_ipv6s,paramaters["peerIPV6"],"DN42 ipv6")
+        await check_asn_ip(admin,mntner,paramaters['peerASN'],"IPv6",paramaters["peerIPV6"],only_ip=True)
+        if paramaters["myIPV6"] == my_paramaters["myIPV6"] or paramaters["myIPV6"] in allowed_custom_myip:
+            pass
+        else:
+            if "/" not in paramaters["myIPV6"]:
+                await check_asn_ip(admin,mntner,paramaters['peerASN'],"IPv6",paramaters["myIPV6"],only_ip=True)
+            else:
+                await check_asn_ip(admin,mntner,paramaters['peerASN'],"IPv6",paramaters["myIPV6"],only_ip=False)
+                check_valid_ip_range("IPv6",[paramaters["myIPV6"]],paramaters["peerIPV6"],"allocated IPv6 to me")
     else:
         paramaters["peerIPV6"] = None
-        
+    ######################### hasIPV4LL
     if paramaters["hasIPV4LL"]:
         if paramaters["myIPV4LL"] == None:
             raise NotImplementedError("Sorry, I don't have IPv4 link-local address.")
-        if paramaters["myIPV4LL"] == paramaters["peerIPV4LL"]:
-            raise ValueError("Conflict. Your IPv4 link-local address are conflict with my IPv4 link-local address.")
-        try:
-            check_asn_ip(admin,paramaters['peerASN'],IPv4Network,DN42_valid_ipv4s,paramaters["peerIPV4LL"],"DN42 ip")
-        except ValueError as e:
-            check_valid_ip_range(IPv4Network,valid_ipv4_lilos,paramaters["peerIPV4LL"],"link-local ipv4")
-        check_valid_ip_range(IPv4Network,valid_ipv4_lilos,paramaters["myIPV4LL"],"link-local ipv4")
+        check_valid_ip_range("IPv4",[valid_ipv4_lilo],paramaters["peerIPV4LL"],"link-local ipv4")
+        check_valid_ip_range("IPv4",[valid_ipv4_lilo],paramaters["myIPV4LL"].split("/")[0],"link-local ipv4")
+        paramaters["myIPV4LL"] = paramaters["myIPV4LL"].split("/")[0] + "/" + valid_ipv4_lilo.split("/")[1]
     else:
         paramaters["peerIPV4LL"] = None
+    ######################### hasIPV6LL
     if paramaters["hasIPV6LL"]:
         if paramaters["myIPV6LL"] == None:
             raise NotImplementedError("Sorry, I don't have IPv6 link-local address.")
-        if paramaters["myIPV6LL"] == paramaters["peerIPV6LL"]:
-            raise ValueError("Conflict. Your IPv6 link-local address are conflict with my IPv6 link-local address.")
-        try:
-            check_asn_ip(admin,paramaters['peerASN'],IPv6Network,DN42_valid_ipv6s,paramaters["peerIPV6LL"],"DN42 ipv6")
-        except ValueError as e:
-            check_valid_ip_range(IPv6Network,valid_ipv6_lilos,paramaters["peerIPV6LL"],"link-local ipv6")
-        check_valid_ip_range(IPv6Network,valid_ipv6_lilos,paramaters["myIPV6LL"],"link-local ipv6")
+        check_valid_ip_range("IPv6",[valid_ipv6_lilo],paramaters["peerIPV6LL"],"link-local ipv6")
+        check_valid_ip_range("IPv6",[valid_ipv6_lilo],paramaters["myIPV6LL"].split("/")[0],"link-local ipv6")
+        paramaters["myIPV6LL"] = paramaters["myIPV6LL"].split("/")[0] + "/" + valid_ipv6_lilo.split("/")[1]
     else:
         paramaters["peerIPV6LL"] = None
     if paramaters["MP_BGP"]:
@@ -1033,10 +1060,38 @@ def newConfig(paramaters,overwrite=False):
     mtu = paramaters["myWG_MTU"]
     customDevice = paramaters["customDevice"]
     customDeviceSetup = paramaters["customDeviceSetup"]
-    
+    peerV4use = None
+    myV4use = None
+    myV4useIP = None
+    if peerIPV4 != None:
+        peerV4use = peerIPV4
+        myV4use = myIPV4
+        myV4useIP = myIPV4.split("/")[0] if myIPV4 != None else None
+        if IPv4Address(peerV4use) == IPv4Address(myV4useIP):
+            raise ValueError("Your tunnel IPv4 address are conflicted with mine: " + str(IPv4Address(peerV4use)))
+    if peerIPV4LL != None:
+        peerV4use = peerIPV4LL
+        myV4use = myIPV4LL
+        myV4useIP = myIPV4LL.split("/")[0] if myIPV4LL != None else None
+        if IPv4Address(peerV4use) == IPv4Address(myV4useIP):
+            raise ValueError("Your tunnel IPv6 link local address are conflicted with mine: " + str(IPv4Address(peerV4use)))
+    peerV6use =None
+    myV6use = None
+    myV6useIP =None
+    if peerIPV6 != None:
+        peerV6use = peerIPV6
+        myV6use = myIPV6
+        myV6useIP = myIPV6.split("/")[0] if myIPV6 != None else None
+        if IPv6Address(peerV6use) == IPv6Address(myV6useIP):
+            raise ValueError("Your tunnel IPv6 address are conflicted with mine: " + str(IPv6Address(peerV6use)))
+    if peerIPV6LL != None:
+        peerV6use = peerIPV6LL
+        myV6use = myIPV6LL
+        myV6useIP = myIPV6LL.split("/")[0] if myIPV6LL != None else None
+        if IPv6Address(peerV6use) == IPv6Address(myV6useIP):
+            raise ValueError("Your tunnel IPv6 link local address are conflicted with mine: " + str(IPv6Address(peerV6use)))
     if peerContact == None or len(peerContact) == 0:
         raise ValueError('"Your Telegram ID or e-mail" can\'t be null.')
-    
     portlist = list(sorted(map(lambda x:int(x.split(".")[0]),filter(lambda x:x[-4:] == "yaml", os.listdir(wgconfpath + "/peerinfo")))))
     # portlist=[23001, 23002, 23003,23004,23005,23006,23007,23008,23009,23088]
     if peerID == None:
@@ -1075,8 +1130,6 @@ def newConfig(paramaters,overwrite=False):
         if_name = "dn42-" + peerName
     else:
         if_name = customDevice
-        
-    
     customDeviceSetup = customDeviceSetup.replace( "%if_name" , if_name )
     if peerHost != None:
         customDeviceSetup = customDeviceSetup.replace( "%peer_host" , peerHost )
@@ -1109,33 +1162,26 @@ def newConfig(paramaters,overwrite=False):
     if use_speed_limit:
         setupsh += f"wondershaper {if_name} $WG_SPEED_LIMIT $WG_SPEED_LIMIT || true\n"
     
-    if peerIPV4LL != None:
-        myIPV4 = myIPV4LL
-        peerIPV4 = peerIPV4LL
-    birdPeerV4 = None
-    birdMyV4 = myIPV4
-    birdPeerV6 = None
-    birdMyV6 = None
-    if myIPV4 != None:
-        if Ext_Nh == True:
-            pass # setupsh += f"ip addr add {myIPV4}/32 dev {if_name}\n"
-        elif peerIPV4 != None:
-            setupsh += f"ip addr add {myIPV4} peer {peerIPV4} dev {if_name} scope link\n"
-            if MP_BGP == False:
-                birdPeerV4 = peerIPV4
-        else:
-            pass #setupsh += f"ip addr add {myIPV4}/32 dev {if_name}\n"
+    birdPeerV4 = peerV4use
+    birdMyV4 = myV4useIP
+    birdPeerV6 = peerV6use
+    birdMyV6 = myV6useIP
+    if peerV4use != None:
+        if peerV6use != None and MP_BGP == True and Ext_Nh == True:
+            birdPeerV4 = None
+            birdMyV4 = None
+        if Ext_Nh == False:
+            if "/" in myV4use:
+                setupsh += f"ip addr add {myV4use} dev {if_name} scope link\n"
+            else:
+                setupsh += f"ip addr add {myV4useIP} peer {peerIPV4} dev {if_name} scope link\n"
     
-    if peerIPV6LL != None:
-        pass #setupsh += f"ip addr add {myIPV6}/128 dev {if_name}\n"
-        setupsh += f"ip addr add {myIPV6LL}/64 dev {if_name}\n"
-        birdPeerV6 = peerIPV6LL
-        birdMyV6 = myIPV6LL
-    elif peerIPV6 != None:
-        setupsh += f"ip addr add {myIPV6} peer {peerIPV6} dev {if_name}\n"
-        setupsh += f"ip route add {peerIPV6}/128 src {myIPV6} dev {if_name}\n"
-        birdPeerV6 = peerIPV6
-        birdMyV6 = myIPV6
+    if peerV6use != None:
+        if "/" in myV6use:
+            setupsh += f"ip addr add {myV6use} dev {if_name} scope link\n"
+        else:
+            setupsh += f"ip addr add {myV6useIP} peer {peerV6use} dev {if_name}\n"
+            setupsh += f"ip route add {peerV6use}/128 src {myV6useIP} dev {if_name}\n"
     
     birdconf = ""
     channel4 = ""
@@ -1224,7 +1270,7 @@ def newConfig(paramaters,overwrite=False):
         channel6 = indent2(channel6,"                                            ")
         
     if MP_BGP == True:
-        if peerIPV6 != None or peerIPV6LL != None:
+        if birdPeerV6 != None:
             birdconf += textwrap.dedent(f"""\
                                         protocol bgp dn42_{peerName}_v6 from dnpeers {{
                                             source address {birdMyV6};
@@ -1246,7 +1292,7 @@ def newConfig(paramaters,overwrite=False):
                                             }};
                                         }};
                                         """)
-        if peerIPV6 != None or peerIPV6LL != None:
+        if birdPeerV6 != None:
             birdconf += textwrap.dedent(f"""\
                                         protocol bgp dn42_{peerName}_v6 from dnpeers {{
                                             source address {birdMyV6};
@@ -1585,13 +1631,9 @@ async def action(paramaters):
         print(traceback.format_exc())
         return errcode, get_err_page(paramaters,title,e)
 
-try:
-    ipv4s = [ipaddress.ip_network(n) for n in requests.get("https://www.cloudflare.com/ips-v4", verify=False, timeout=3).text.split("\n")]
-    ipv6s = [ipaddress.ip_network(n) for n in requests.get("https://www.cloudflare.com/ips-v6", verify=False, timeout=3).text.split("\n")]
-except Exception as e:
-    print(traceback.format_exc())
-    ipv4s = [ipaddress.ip_network("0.0.0.0/0")]
-    ipv6s = [ipaddress.ip_network("::/0")]
+ipv4s = [ipaddress.ip_network("0.0.0.0/0")]
+ipv6s = [ipaddress.ip_network("::/0")]
+
     
 def get_ip(r):
     rip = ipaddress.ip_address( r.remote_ip )
@@ -1668,6 +1710,11 @@ class My404Handler(tornado.web.RequestHandler):
         pass
 
 if __name__ == '__main__':
+    try:
+        ipv4s = [ipaddress.ip_network(n) for n in requests.get("https://www.cloudflare.com/ips-v4", verify=False, timeout=3).text.split("\n")]
+        ipv6s = [ipaddress.ip_network(n) for n in requests.get("https://www.cloudflare.com/ips-v6", verify=False, timeout=3).text.split("\n")]
+    except Exception as e:
+        print(traceback.format_exc())
     if my_config["urlprefix"] == "" or  my_config["urlprefix"] == "/":
         url_prefix = ""
         url_prefix_pre = ""

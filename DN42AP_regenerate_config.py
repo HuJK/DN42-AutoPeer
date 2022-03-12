@@ -2,6 +2,7 @@
 import os
 import yaml
 import time
+import json
 import asyncio
 import pathlib
 from distutils.dir_util import copy_tree
@@ -12,6 +13,14 @@ conf_dir = DN42AutoPeer.wgconfpath + "/peerinfo"
 bkfdr = os.path.expanduser(f"~/dn42ap_{str(int(time.time()))}")
 
 backup = input(f"This script will clear all old files in {DN42AutoPeer.wgconfpath} and {DN42AutoPeer.bdconfpath}, backup it into {bkfdr} ? (Y/N)")
+
+allowed_myip = []
+if "DN42_IPV4" in os.environ:
+    allowed_myip += [os.environ["DN42_IPV4"]]
+if "DN42_IPV6" in os.environ:
+    allowed_myip += [os.environ["DN42_IPV6"]]
+if "DN42AP_ALLOWED_MYIP" in os.environ:
+    allowed_myip += json.loads(os.environ["DN42AP_ALLOWED_MYIP"])
 
 if backup == "y" or backup == "Y":
     print(bkfdr)
@@ -26,9 +35,9 @@ if backup == "y" or backup == "Y":
 
 def saveConfig(new_config):
     for path,content in new_config["config"].items():
-        print("================================")
-        print(path)
-        print(content)
+#         print("================================")
+#         print(path)
+#         print(content)
         fileparent = pathlib.Path(path).parent.absolute()
         if not os.path.isdir(fileparent):
             os.makedirs(fileparent, mode=0o700 , exist_ok=True)
@@ -36,7 +45,7 @@ def saveConfig(new_config):
             conffd.write(content)
             if content.startswith("#!"):
                 os.chmod(path, 0o755)
-        print("================================")
+#         print("================================")
 
 for f in os.listdir(DN42AutoPeer.bdconfpath):
     if f.endswith(".conf"):
@@ -50,12 +59,12 @@ async def main():
     for old_conf_file in os.listdir(conf_dir):
         if old_conf_file.endswith(".yaml") and os.path.isfile(f"{conf_dir}/{old_conf_file}"):
             try:
+                print(old_conf_file)
                 old_conf = yaml.load(open(f"{conf_dir}/{old_conf_file}").read(),Loader=yaml.SafeLoader)
                 action , paramaters = DN42AutoPeer.get_paramaters(old_conf,isAdmin=True)
-                paramaters = await DN42AutoPeer.check_reg_paramater(paramaters,skip_check=old_conf_file[:-5],git_pull=False,allow_invalid_as=True)
+                paramaters = await DN42AutoPeer.check_reg_paramater(paramaters,skip_check=old_conf_file[:-5],git_pull=False,allow_invalid_as=True,allowed_custom_myip=allowed_myip)
                 new_config = DN42AutoPeer.newConfig(paramaters,overwrite=True)
             except Exception as e:
-                print(old_conf_file)
                 raise e
             saveConfig(new_config)
             

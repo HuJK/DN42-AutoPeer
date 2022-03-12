@@ -1,31 +1,29 @@
 jwt_secret: null
 html_title: DN42 Self-Service Peering Portal
-git_repo_url: "https://github.com/HuJK/DN42-AutoPeer"
+git_repo_url: https://github.com/HuJK/DN42-AutoPeer
 listen_host: 0.0.0.0
-listen_port: "4242"
+listen_port: '4242'
 ssl_options: null
-myWG_Pri_Key: ""
-urlprefix: ""
+myWG_Pri_Key: ''
+urlprefix: ''
 register_redirect: null
 wgconfpath: /etc/dn42ap
 bdconfpath: /etc/bird/peers
 gitsyncpath: null
 dn42_whois_server:
-  - git
-  - "https://github.com/KusakabeSi/dn42-registry"
-dn42repo_base: "https://raw.githubusercontent.com/KusakabeSi/dv42-registry/master"
-admin_mnt: ""
+- git
+- https://github.com/KusakabeSi/dn42-registry
+dn42repo_base: https://raw.githubusercontent.com/KusakabeSi/dv42-registry/master
+admin_mnt: ''
 DN42_valid_ipv4s:
-  - 172.20.0.0/14
-  - 172.31.0.0/16
-  - 10.0.0.0/8
+- 172.20.0.0/14
+- 172.31.0.0/16
+- 10.0.0.0/8
 DN42_valid_ipv6s:
-  - fd00::/8
-valid_ipv4_linklocals:
-  - 169.254.42.0/24
-valid_ipv6_linklocals:
-  - fe80::/64
-wg_port_search_range: "range(20000 + peerASN % 10000 ,20100 + peerASN % 10000 )"
+- fd00::/8
+valid_ipv4_linklocal: 169.254.42.0/24
+valid_ipv6_linklocal: fe80::/64
+wg_port_search_range: range(20000 + peerASN % 10000 ,20100 + peerASN % 10000 )
 init_device: true
 reset_wgconf_interval: 0
 myHostHidden: false
