@@ -164,7 +164,7 @@ bdconfpath = my_config["bdconfpath"]
 pathlib.Path(wgconfpath + "/peerinfo").mkdir(parents=True, exist_ok=True)
 
 client_valid_keys = ["peer_plaintext","peer_pub_key_pgp","peer_signature", "peerASN","peerName", "hasIPV4", "peerIPV4","hasIPV4LL","peerIPV4LL", "hasIPV6", "peerIPV6", "hasIPV6LL", "peerIPV6LL","MP_BGP","Ext_Nh", "hasHost", "peerHost", "peerWG_Pub_Key","peerWG_PS_Key", "peerContact", "PeerID","myIPV4","myIPV6","myIPV4LL","myIPV6LL","customDevice","customDeviceSetup","myWG_Pri_Key","transitMode","myWG_MTU","birdAddConf"]
-client_valid_keys_admin_only = ["customDevice","customDeviceSetup","myWG_Pri_Key","peerName","birdAddConf"]
+client_valid_keys_admin_only = ["customDevice","customDeviceSetup","myWG_Pri_Key","peerName","birdAddConf","transitMode","myWG_MTU"]
 dn42repo_base = my_config["dn42repo_base"]
 DN42_valid_ipv4s = my_config["DN42_valid_ipv4s"]
 DN42_valid_ipv6s = my_config["DN42_valid_ipv6s"]
@@ -404,6 +404,117 @@ async def get_html(paramaters,action="OK",peerSuccess=False):
         edit_btn_disabled = ""
     except FileNotFoundError as e:
         pass
+    jsscripts = """
+prevVars={
+  v4: "hasIPV4",
+  v6: "hasIPV6LL",
+  nov4: "v4only"
+}
+function getV4() {
+  return document.getElementsByName("hasIPV4")[0].checked || document.getElementsByName("hasIPV4LL")[0].checked
+}
+function getV6() {
+  return document.getElementsByName("hasIPV6")[0].checked || document.getElementsByName("hasIPV6LL")[0].checked
+}
+
+function onV4() {
+  if (document.getElementsByName("hasIPV4")[0].checked == true){
+    document.getElementsByName("hasIPV4LL")[0].checked = false;
+    document.getElementsByName("Ext_Nh")[0].checked = false;
+    prevVars.v4 = "hasIPV4"
+  } else {
+    if( (getV4() || getV6()) == false){
+        alert("We can't establish BGP session without any IP.")
+        document.getElementsByName("hasIPV4")[0].checked = true;
+        return false;
+    }
+    if (prevVars.nov4 == "enh"){
+      document.getElementsByName("Ext_Nh")[0].checked = true
+    } else {
+      document.getElementsByName("MP_BGP")[0].checked = false
+    }
+  }
+}
+function onV4LL() {
+  if (document.getElementsByName("hasIPV4LL")[0].checked == true){
+    document.getElementsByName("hasIPV4")[0].checked = false;
+    document.getElementsByName("Ext_Nh")[0].checked = false;
+    prevVars.v4 = "hasIPV4LL"
+  } else {
+    if( (getV4() || getV6()) == false){
+        alert("We can't establish BGP session without any IP.")
+        document.getElementsByName("hasIPV4LL")[0].checked = true;
+        return false;
+    }
+    if (prevVars.nov4 == "enh"){
+      document.getElementsByName("Ext_Nh")[0].checked = true
+    } else {
+      document.getElementsByName("MP_BGP")[0].checked = false
+    }
+  }
+}
+function onV6() {
+  if (document.getElementsByName("hasIPV6")[0].checked == true){
+    document.getElementsByName("hasIPV6LL")[0].checked = false;
+    document.getElementsByName("MP_BGP")[0].disabled = false;
+    document.getElementsByName("Ext_Nh")[0].disabled = false;
+    prevVars.v6 = "hasIPV6"
+  } else {
+    if( (getV4() || getV6()) == false){
+        alert("We can't establish BGP session without any IP.")
+        document.getElementsByName("hasIPV6")[0].checked = true;
+        return false;
+    }
+    if (getV6() == false){
+      document.getElementsByName("MP_BGP")[0].checked = false;
+      document.getElementsByName("Ext_Nh")[0].checked = false
+      document.getElementsByName("MP_BGP")[0].disabled = true;
+      document.getElementsByName("Ext_Nh")[0].disabled = true;
+      prevVars.nov4 = "v4only"
+    }
+  }
+}
+function onV6LL() {
+  if (document.getElementsByName("hasIPV6LL")[0].checked == true){
+    document.getElementsByName("hasIPV6")[0].checked = false;
+    document.getElementsByName("MP_BGP")[0].disabled = false;
+    document.getElementsByName("Ext_Nh")[0].disabled = false;
+    prevVars.v6 = "hasIPV6LL"
+  } else {
+    if( (getV4() || getV6()) == false){
+        alert("We can't establish BGP session without any IP.")
+        document.getElementsByName("hasIPV6LL")[0].checked = true;
+        return false;
+    }
+    if (getV6() == false){
+      document.getElementsByName("MP_BGP")[0].checked = false;
+      document.getElementsByName("Ext_Nh")[0].checked = false
+      document.getElementsByName("MP_BGP")[0].disabled = true;
+      document.getElementsByName("Ext_Nh")[0].disabled = true;
+      prevVars.nov4 = "v4only"
+    }
+  }
+}
+function onMPBGP() {
+  if (document.getElementsByName("MP_BGP")[0].checked == true){
+    document.getElementsByName(prevVars.v4)[0].checked = true;
+  }
+  if (document.getElementsByName("MP_BGP")[0].checked == false){
+    document.getElementsByName("Ext_Nh")[0].checked = false;
+    prevVars.nov4 = "v4only"
+  }
+}
+function onENH() {
+  if (document.getElementsByName("Ext_Nh")[0].checked == true){
+    document.getElementsByName("hasIPV4")[0].checked = false;
+    document.getElementsByName("hasIPV4LL")[0].checked = false;
+    document.getElementsByName("MP_BGP")[0].checked = true;
+    prevVars.nov4 = "enh"
+  } else {
+    document.getElementsByName(prevVars.v4)[0].checked = true;
+  }
+}
+"""
     return f"""
 <!DOCTYPE html>
 <html>
@@ -444,6 +555,9 @@ async def get_html(paramaters,action="OK",peerSuccess=False):
 <body>
 <h1>{ my_config["html_title"] }</h1>
 <h3>{"Peer success! " if peerSuccess else "Please fill "}Your Info</h3>
+<script>
+{jsscripts}
+</script>
 <form action="action_page.php" method="post" class="markdown-body">
  <h2>Authentication</h2>
  <table class="table">
@@ -456,12 +570,12 @@ async def get_html(paramaters,action="OK",peerSuccess=False):
  <h2>Registration</h2>
  <table class="table">
    <tr><td><h5>BGP Session Info:</h5></td><td>  </td></tr>
-   <tr><td><input type="checkbox" name="hasIPV4" {"checked" if hasIPV4 else ""} {hasIPV4Disabled}>DN42 IPv4</td><td><input type="text" value="{peerIPV4 if peerIPV4 != None else ""}" name="peerIPV4" {hasIPV4Disabled} /></td></tr>
-   <tr><td><input type="checkbox" name="hasIPV6" {"checked" if hasIPV6 else ""} {hasIPV6Disabled}>DN42 IPv6</td><td><input type="text" value="{peerIPV6 if peerIPV6 != None else ""}" name="peerIPV6" {hasIPV6Disabled} /></td></tr>
-   <tr><td><input type="checkbox" name="hasIPV4LL" {"checked" if hasIPV4LL else ""} {hasIPV4LLDisabled}>IPv4 Link local</td><td><input type="text" value="{peerIPV4LL if peerIPV4LL != None else ""}" name="peerIPV4LL" {hasIPV4LLDisabled} /></td></tr>
-   <tr><td><input type="checkbox" name="hasIPV6LL" {"checked" if hasIPV6LL else ""} {hasIPV6LLDisabled}>IPv6 Link local</td><td><input type="text" value="{peerIPV6LL if peerIPV6LL != None else ""}" name="peerIPV6LL" {hasIPV6LLDisabled} /></td></tr>
-   <tr><td><input type="checkbox" name="MP_BGP" {"checked" if MP_BGP else ""} {MP_BGP_Disabled} >Multiprotocol BGP</td><td></td></tr>
-   <tr><td><input type="checkbox" name="Ext_Nh" {"checked" if Ext_Nh else ""} {Ext_Nh_Disabled} >Extended next hop</td><td></td></tr>
+   <tr><td><input type="checkbox" name="hasIPV4" onclick="onV4()" {"checked" if hasIPV4 else ""} {hasIPV4Disabled}>DN42 IPv4</td><td><input type="text" value="{peerIPV4 if peerIPV4 != None else ""}" name="peerIPV4" {hasIPV4Disabled} /></td></tr>
+   <tr><td><input type="checkbox" name="hasIPV4LL" onclick="onV4LL()" {"checked" if hasIPV4LL else ""} {hasIPV4LLDisabled}>IPv4 Link local</td><td><input type="text" value="{peerIPV4LL if peerIPV4LL != None else ""}" name="peerIPV4LL" {hasIPV4LLDisabled} /></td></tr>
+   <tr><td><input type="checkbox" name="hasIPV6" onclick="onV6()" {"checked" if hasIPV6 else ""} {hasIPV6Disabled}>DN42 IPv6</td><td><input type="text" value="{peerIPV6 if peerIPV6 != None else ""}" name="peerIPV6" {hasIPV6Disabled} /></td></tr>
+   <tr><td><input type="checkbox" name="hasIPV6LL" onclick="onV6LL()" {"checked" if hasIPV6LL else ""} {hasIPV6LLDisabled}>IPv6 Link local</td><td><input type="text" value="{peerIPV6LL if peerIPV6LL != None else ""}" name="peerIPV6LL" {hasIPV6LLDisabled} /></td></tr>
+   <tr><td><input type="checkbox" name="MP_BGP" onclick="onMPBGP()" {"checked" if MP_BGP else ""} {MP_BGP_Disabled} >Multiprotocol BGP</td><td></td></tr>
+   <tr><td><input type="checkbox" name="Ext_Nh" onclick="onENH()" {"checked" if Ext_Nh else ""} {Ext_Nh_Disabled} >Extended next hop</td><td></td></tr>
    <tr><td><h5>Wireguard Connection Info:</h5></td><td>  </td></tr>
    <tr><td><input type="checkbox" name="hasHost" {"checked" if hasHost else ""} {hasHost_Readonly}>Your Clearnet Endpoint (domain or ip:port)</td><td><input type="text" value="{peerHostDisplay if peerHost != None else ""}" name="peerHost" /></td></tr>
    <tr><td>Your Wireguard Public Key</td><td><input type="text" value="{peerWG_Pub_Key}" name="peerWG_Pub_Key" /></td></tr>
@@ -1060,36 +1174,41 @@ def newConfig(paramaters,overwrite=False):
     mtu = paramaters["myWG_MTU"]
     customDevice = paramaters["customDevice"]
     customDeviceSetup = paramaters["customDeviceSetup"]
+    successdisplay = { "My ASN":  paramaters["myASN"]}
     peerV4use = None
     myV4use = None
     myV4useIP = None
-    if peerIPV4 != None:
-        peerV4use = peerIPV4
-        myV4use = myIPV4
-        myV4useIP = myIPV4.split("/")[0] if myIPV4 != None else None
-        if IPv4Address(peerV4use) == IPv4Address(myV4useIP):
-            raise ValueError("Your tunnel IPv4 address are conflicted with mine: " + str(IPv4Address(peerV4use)))
     if peerIPV4LL != None:
         peerV4use = peerIPV4LL
         myV4use = myIPV4LL
         myV4useIP = myIPV4LL.split("/")[0] if myIPV4LL != None else None
+        successdisplay["IPv4 Link local"] = myV4useIP
         if IPv4Address(peerV4use) == IPv4Address(myV4useIP):
             raise ValueError("Your tunnel IPv6 link local address are conflicted with mine: " + str(IPv4Address(peerV4use)))
+    elif peerIPV4 != None:
+        peerV4use = peerIPV4
+        myV4use = myIPV4
+        myV4useIP = myIPV4.split("/")[0] if myIPV4 != None else None
+        successdisplay["DN42 IPv4"] = myV4useIP
+        if IPv4Address(peerV4use) == IPv4Address(myV4useIP):
+            raise ValueError("Your tunnel IPv4 address are conflicted with mine: " + str(IPv4Address(peerV4use)))
     peerV6use =None
     myV6use = None
     myV6useIP =None
-    if peerIPV6 != None:
-        peerV6use = peerIPV6
-        myV6use = myIPV6
-        myV6useIP = myIPV6.split("/")[0] if myIPV6 != None else None
-        if IPv6Address(peerV6use) == IPv6Address(myV6useIP):
-            raise ValueError("Your tunnel IPv6 address are conflicted with mine: " + str(IPv6Address(peerV6use)))
     if peerIPV6LL != None:
         peerV6use = peerIPV6LL
         myV6use = myIPV6LL
         myV6useIP = myIPV6LL.split("/")[0] if myIPV6LL != None else None
+        successdisplay["IPv6 Link local"] = myV6useIP
         if IPv6Address(peerV6use) == IPv6Address(myV6useIP):
             raise ValueError("Your tunnel IPv6 link local address are conflicted with mine: " + str(IPv6Address(peerV6use)))
+    elif peerIPV6 != None:
+        peerV6use = peerIPV6
+        myV6use = myIPV6
+        myV6useIP = myIPV6.split("/")[0] if myIPV6 != None else None
+        successdisplay["DN42 IPv6"] = myV6useIP
+        if IPv6Address(peerV6use) == IPv6Address(myV6useIP):
+            raise ValueError("Your tunnel IPv6 address are conflicted with mine: " + str(IPv6Address(peerV6use)))
     if peerContact == None or len(peerContact) == 0:
         raise ValueError('"Your Telegram ID or e-mail" can\'t be null.')
     portlist = list(sorted(map(lambda x:int(x.split(".")[0]),filter(lambda x:x[-4:] == "yaml", os.listdir(wgconfpath + "/peerinfo")))))
@@ -1330,6 +1449,7 @@ def newConfig(paramaters,overwrite=False):
         "peerName": peerName,
         "paramaters": paramaters,
         "paramaters_save": paramaters_save,
+        "successdisplay": successdisplay,
     }
 
 def initDevice():
@@ -1458,7 +1578,7 @@ def try_get_param(peerID,key,default=""):
         return peerInfo[key]
     return default
 
-def get_paramaters(paramaters,isAdmin=False):
+def get_paramaters(paramaters,default_params=my_paramaters,isAdmin=False):
     action                         = get_key_default(paramaters,"action","OK")
     paramaters = { valid_key: paramaters[valid_key] for valid_key in client_valid_keys if (valid_key in paramaters)  }
     if not isAdmin:
@@ -1477,10 +1597,10 @@ def get_paramaters(paramaters,isAdmin=False):
     paramaters["peerIPV6"]         = get_key_default(paramaters,"peerIPV6",None)
     paramaters["hasIPV6LL"]        = get_key_default(paramaters,"hasIPV6LL",False)
     paramaters["peerIPV6LL"]       = get_key_default(paramaters,"peerIPV6LL",None)
-    paramaters["myIPV4"]           = get_key_default(paramaters,"myIPV4",my_paramaters["myIPV4"]) if my_paramaters["myIPV4"] != "" else ""
-    paramaters["myIPV6"]           = get_key_default(paramaters,"myIPV6",my_paramaters["myIPV6"]) if my_paramaters["myIPV6"] != "" else ""
-    paramaters["myIPV4LL"]         = get_key_default(paramaters,"myIPV4LL",my_paramaters["myIPV4LL"]) if my_paramaters["myIPV4LL"] != "" else ""
-    paramaters["myIPV6LL"]         = get_key_default(paramaters,"myIPV6LL",my_paramaters["myIPV6LL"]) if my_paramaters["myIPV6LL"] != "" else ""
+    paramaters["myIPV4"]           = get_key_default(paramaters,"myIPV4",default_params["myIPV4"]) if default_params["myIPV4"] != "" else ""
+    paramaters["myIPV6"]           = get_key_default(paramaters,"myIPV6",default_params["myIPV6"]) if default_params["myIPV6"] != "" else ""
+    paramaters["myIPV4LL"]         = get_key_default(paramaters,"myIPV4LL",default_params["myIPV4LL"]) if default_params["myIPV4LL"] != "" else ""
+    paramaters["myIPV6LL"]         = get_key_default(paramaters,"myIPV6LL",default_params["myIPV6LL"]) if default_params["myIPV6LL"] != "" else ""
     paramaters["myWG_Pri_Key"]     = get_key_default(paramaters,"myWG_Pri_Key",my_config["myWG_Pri_Key"])
     paramaters["myWG_MTU"]         = get_key_default(paramaters,"myWG_MTU",1280)
     paramaters["transitMode"]      = get_key_default(paramaters,"transitMode","Regular")
@@ -1499,7 +1619,7 @@ def get_paramaters(paramaters,isAdmin=False):
     
     paramaters["myWG_Pub_Key"]     = wgpri2pub(paramaters["myWG_Pri_Key"])
     #print(yaml.safe_dump(paramaters))
-    paramaters = {**my_paramaters,**paramaters} 
+    paramaters = {**default_params,**paramaters}
     return action , paramaters
 
 def remove_sensitive(paramaters):
@@ -1524,7 +1644,6 @@ async def action(paramaters):
         if action=="OK":
             if paramaters["peerASN"] == None:
                 paramaters["hasIPV4"] = True 
-                paramaters["hasIPV6"] = True 
                 paramaters["hasIPV6LL"] = True
                 paramaters["MP_BGP"] = True
                 paramaters["Ext_Nh"] = False
@@ -1583,7 +1702,11 @@ async def action(paramaters):
                 del paramaters["myWG_Pri_Key"]
                 del paramaters["myWG_Pub_Key"]
                 _, peerInfo = get_paramaters(peerInfo,isAdmin=True)
-                paramaters = {**peerInfo,**paramaters}
+                paramaters_in = { valid_key: paramaters[valid_key] for valid_key in client_valid_keys if (valid_key in paramaters)  }
+                for k in client_valid_keys_admin_only:
+                    if k in paramaters_in:
+                        del paramaters_in[k]
+                paramaters = {**peerInfo,**paramaters_in}
                 paramaters = await check_reg_paramater(paramaters,skip_check=paramaters["PeerID"])
                 new_config = newConfig(paramaters,overwrite=True)
                 if mntner == my_config["admin_mnt"]:
@@ -1608,12 +1731,7 @@ async def action(paramaters):
                 myHostDisplay = paramaters["myHostDisplay"]
             else:
                 myHostDisplay = paramaters["myHost"] + ":" + str(paramaters["PeerID"])
-            myInfo = {
-                "My ASN":          paramaters["myASN"],
-                "DN42 IPv4":       paramaters["myIPV4"],
-                "DN42 IPv6":       paramaters["myIPV6"],
-                "IPv4 Link local": paramaters["myIPV4LL"],
-                "IPv6 Link local": paramaters["myIPV6LL"],
+            myInfo = { **new_config["successdisplay"] ,
                 "Endpoint Address":myHostDisplay,
                 "My WG Public Key":paramaters["myWG_Pub_Key"],
                 "My Contact":  paramaters["myContact"]
