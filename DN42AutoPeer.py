@@ -285,7 +285,7 @@ async def get_signature_html(baseURL,paramaters):
         elif v == True:
             v = "on"
         retstr += f'<input type="hidden" name="{k}" value="{v}">\n'
-    retstr +="""<input type="submit" name="action" value="OK" />
+    retstr +="""<input type="submit" translate="no" name="action" value="OK" />
 </form>
 </body>
 </html>
@@ -565,7 +565,7 @@ function onENH() {
    <tr><td>Plain text to sign</td><td><input type="text" value="{peer_plaintext}" name="peer_plaintext" readonly/></td></tr>
    <tr><td>Your PGP public key<br>(leave it blank if you don't use it)</td><td><textarea name="peer_pub_key_pgp">{peer_pub_key_pgp}</textarea></td></tr>
    <tr><td>Your signature</td><td><textarea name="peer_signature">{peer_signature}</textarea></td></tr>
-   <tr><td>Fill your ASN, Click the button, Follow the instruction</td><td><input type="submit" name="action" value="Get Signature" /></td></tr>
+   <tr><td>Fill your ASN, Click the button, Follow the instruction</td><td><input type="submit" translate="no" name="action" value="Get Signature" /></td></tr>
  </table>
  <h2>Registration</h2>
  <table class="table">
@@ -581,12 +581,12 @@ function onENH() {
    <tr><td>Your Wireguard Public Key</td><td><input type="text" value="{peerWG_Pub_Key}" name="peerWG_Pub_Key" /></td></tr>
    <tr><td>Your Wireguard Pre-Shared Key (Optional)</td><td><input type="text" value="{peerWG_PS_Key}" name="peerWG_PS_Key" /></td></tr>
    <tr><td>Your Telegram ID or e-mail</td><td><input type="text" value="{peerContact}" name="peerContact" /></td></tr>
-   <tr><td>Register a new peer and get the peer ID</td><td><input type="submit" name="action" value="Register" /></td></tr>
+   <tr><td>Register a new peer and get the peer ID</td><td><input type="submit" translate="no" name="action" value="Register" /></td></tr>
    </table>
    <h2>Management</h2>
    <table  class="table">
    <tr><td>Your Peer ID</td><td><input type="text" value="{PeerID if PeerID != None else ""}" name="PeerID" /></td></tr>
-   <tr><td></td><td><input type="submit" name="action" value="Show" /><input type="submit" name="action" value="Update" {edit_btn_disabled}/><input type="submit" name="action" value="Delete" {edit_btn_disabled} /></td></tr>
+   <tr><td></td><td><input type="submit" translate="no" name="action" value="Show" /><input type="submit" translate="no" name="action" value="Update" {edit_btn_disabled}/><input type="submit" translate="no" name="action" value="Delete" {edit_btn_disabled} /></td></tr>
  </table>
 <h3>{"Peer success! " if peerSuccess else "This is "}My Info</h3>
  <table>
@@ -825,7 +825,7 @@ background-color:#555555;}}
             v = "on"
         retstr += f'<input type="hidden" name="{k}" value="{v}">\n'
     if redirect == None:
-        retstr +='<input type="submit" name="action" value="OK" />'
+        retstr +='<input type="submit" translate="no" name="action" value="OK" />'
     else:
         retstr += f"""<a href="{redirect}">
    <input type="button" value="OK" />
