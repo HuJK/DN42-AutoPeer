@@ -13,7 +13,7 @@ gitsyncpath: null
 dn42_whois_server:
 - git
 - "https://dn42ap:qZ8Z5szMt2RsWbdMyEku@gitlab.com/kskbsi/data/dn42-registry"
-dn42repo_base: https://raw.githubusercontent.com/KusakabeSi/dv42-registry/master
+dn42repo_base: https://explorer.burble.com/?#/
 admin_mnt: ''
 DN42_valid_ipv4s:
 - 172.20.0.0/14
