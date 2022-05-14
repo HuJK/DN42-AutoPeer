@@ -256,9 +256,9 @@ async def get_signature_html(baseURL,paramaters):
 <h3>Dear { peerADMname }:</h3>
 """
     if len(methods_class["Supported"]) == 0:
-        retstr += f"""<h4>&nbsp;&nbsp;&nbsp;&nbsp;Sorry, we couldn't find any available authentication method in your <a href="{baseURL}/data/mntner/{peerMNT}" target="_blank">mntner</a> object or <a href="{baseURL}/data/person/{peerADM}" target="_blank"> admin contact</a> in the DN42 registry.</h4><h4>Please <a href="{my_paramaters["myContact"]}" target="_blank">contact me</a> to peer manually.</h4>"""
+        retstr += f"""<h4>&nbsp;&nbsp;&nbsp;&nbsp;Sorry, we couldn't find any available authentication method in your <a href="{baseURL}mntner/{peerMNT}" target="_blank">mntner</a> object or <a href="{baseURL}person/{peerADM}" target="_blank"> admin contact</a> in the DN42 registry.</h4><h4>Please <a href="{my_paramaters["myContact"]}" target="_blank">contact me</a> to peer manually.</h4>"""
     else:
-        retstr += f"""<h4>&nbsp;&nbsp;&nbsp;&nbsp;Please sign our message with your private key registered in your <a href="{baseURL}/data/mntner/{peerMNT}" target="_blank">mntner object</a> or <a href="{baseURL}/data/person/{peerADM}" target="_blank"> admin contact</a> in the DN42 registry.</h4>"""
+        retstr += f"""<h4>&nbsp;&nbsp;&nbsp;&nbsp;Please sign our message with your private key registered in your <a href="{baseURL}mntner/{peerMNT}" target="_blank">mntner object</a> or <a href="{baseURL}person/{peerADM}" target="_blank"> admin contact</a> in the DN42 registry.</h4>"""
     retstr += "<h3><font color='red'><b>Supported</b></font> auth method: </h3>" if len(list(methods_class["Supported"].keys())) != 0 else ""
     for m,v in methods_class["Supported"].items():
         retstr += f"""<table class="table"><tr><td><b>Allowed {m}(s): </b></td></tr>"""
