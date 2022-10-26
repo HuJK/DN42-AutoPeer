@@ -668,7 +668,7 @@ async def try_get_pub_key(pgpsig):
 
 def verify_signature_pgp(plaintext,fg,pub_key,raw_signature):
     pub = pgpy.PGPKey.from_blob(remove_empty_line(pub_key).encode("utf8"))[0]
-    fg_in = fg.replace(" ","")
+    fg_in = fg.replace(" ","").upper()
     fg_p = pub.fingerprint.replace(" ","")
     if fg_in != fg_p:
         raise ValueError("fingerprint not match")
