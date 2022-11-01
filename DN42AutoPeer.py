@@ -208,7 +208,7 @@ async def get_signature_html(baseURL,paramaters):
     peerASN = paramaters["peerASN"]
     peerMNT, peerADM = await get_info_from_asn(peerASN)
     try:
-        peerADMname = (await get_person_info(peerADM[0]))["person"][0]
+        peerADMname = (await get_auth_info(["person","role"],peerADM[0]))["display"][0]
     except Exception as e:
         peerADMname = ""
     methods = await get_auth_method(peerMNT, peerADM)
@@ -613,33 +613,38 @@ async def get_info_from_asn(asn):
     adms = get_key_default(data,"admin-c",[])
     return mnts , adms
 
-async def get_mntner_info(mntner):
-    mntner_info = await whois_query("mntner/" + mntner)
-    ret = DN42whois.proc_data(mntner_info)
-    if "auth" not in ret:
-        ret["auth"] = []
-    return ret
-
-async def get_person_info(person):
-    person_info = (await whois_query("person/" + person))
-    ret = DN42whois.proc_data(person_info)
-    if "auth" not in ret:
-        ret["auth"] = []
-    if "pgp-fingerprint" in ret:
-        ret["auth"] += ["pgp-fingerprint " + ret["pgp-fingerprint"][0]]
-    return ret
+async def get_auth_info(categories,name):
+    for category in categories:
+        try:
+            auth_info = await whois_query(category + "/" + name)
+        except FileNotFoundError as e:
+            continue
+        ret = DN42whois.proc_data(auth_info)
+        if "auth" not in ret:
+            ret["auth"] = []
+        if "pgp-fingerprint" in ret:
+            ret["auth"] += ["pgp-fingerprint " + ret["pgp-fingerprint"][0]]
+        
+        if "person" in ret and len(ret["person"]) > 0:
+            ret["display"] = [ret["person"][0]]
+        elif "role" in ret and  len(ret["role"]) > 0:
+            ret["display"] = [ret["role"][0]]
+        else:
+            ret["display"] = ["[Error: Name not found]"]
+        return ret
+    raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), categories + "/" + name)
 
 async def get_auth_method(mnts,admins): # return [[method,auth_key,mnter]]
     authes = []
     for mnt in mnts:
         try:
-            authes += [[a,mnt] for a in (await get_mntner_info(mnt))["auth"]]
-        except Exception as e:
+            authes += [[a,mnt] for a in (await get_auth_info(["mntner"],mnt))["auth"]]
+        except FileNotFoundError as e:
             pass
     for admin in admins:
         try:
-            authes += [[a,admin] for a in (await get_person_info(admin))["auth"]]
-        except Exception as e:
+            authes += [[a,admin] for a in (await get_auth_info(["person","role"],admin))["auth"]]
+        except FileNotFoundError as e:
             pass
     auth_dict = {}
     for auth in authes:
