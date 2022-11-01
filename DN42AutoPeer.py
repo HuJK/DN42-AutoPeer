@@ -208,13 +208,13 @@ async def get_signature_html(baseURL,paramaters):
     peerASN = paramaters["peerASN"]
     peerMNT, peerADM = await get_info_from_asn(peerASN)
     try:
-        peerADMname = (await get_person_info(peerADM))["person"][0]
+        peerADMname = (await get_person_info(peerADM[0]))["person"][0]
     except Exception as e:
         peerADMname = ""
     methods = await get_auth_method(peerMNT, peerADM)
     text2sign = jwt.encode({'ASN': peerASN, "exp":datetime.datetime.utcnow() + datetime.timedelta(minutes = 30) }, jwt_secret, algorithm='HS256')
     methods_class = {"Supported":{},"Unsupported":{}}
-    for m,v in methods:
+    for m,v,mnt in methods:
         if m in method_hint:
             if m not in methods_class["Supported"]:
                 methods_class["Supported"][m] = []
@@ -609,7 +609,9 @@ remove_empty_line = lambda s: "\n".join(filter(lambda x:len(x)>0, s.replace("\r\
 async def get_info_from_asn(asn):
     asn_info = await whois_query("aut-num/" + asn)
     data = DN42whois.proc_data(asn_info)
-    return data["mnt-by"][0] , data["admin-c"][0]
+    mnts = get_key_default(data,"mnt-by",[])
+    adms = get_key_default(data,"admin-c",[])
+    return mnts , adms
 
 async def get_mntner_info(mntner):
     mntner_info = await whois_query("mntner/" + mntner)
@@ -627,14 +629,21 @@ async def get_person_info(person):
         ret["auth"] += ["pgp-fingerprint " + ret["pgp-fingerprint"][0]]
     return ret
 
-async def get_auth_method(mnt,admin):
+async def get_auth_method(mnts,admins): # return [[method,auth_key,mnter]]
     authes = []
-    if mnt != None:
-        authes += (await get_mntner_info(mnt))["auth"]
-    if admin != None:
-        authes += (await get_person_info(admin))["auth"]
-    ret = {}
-    for a in authes:
+    for mnt in mnts:
+        try:
+            authes += [[a,mnt] for a in (await get_mntner_info(mnt))["auth"]]
+        except Exception as e:
+            pass
+    for admin in admins:
+        try:
+            authes += [[a,admin] for a in (await get_person_info(admin))["auth"]]
+        except Exception as e:
+            pass
+    auth_dict = {}
+    for auth in authes:
+        a,mnt = auth
         if a.startswith("PGPKEY"):
             method , pgp_sign8 = a.split("-",1)
             pgp_pubkey_str = await try_get_pub_key(pgp_sign8)
@@ -648,8 +657,13 @@ async def get_auth_method(mnt,admin):
                 ainfo = method + "_Error " + str(e).replace(" ","_")
         else:
             ainfo = a
-        ret[ainfo] = False
-    return list(filter(lambda x:len(x) == 2,[r.split(" ",1) for r,v in ret.items()]))
+        auth_dict[ainfo] = mnt
+    ret = []
+    for r,v in auth_dict.items():
+        if len(r.split(" ",1)) == 2:
+            m,a = r.split(" ",1)
+            ret += [[m,a,v]]
+    return ret
 
 async def try_get_pub_key(pgpsig):
     if len(pgpsig) < 8:
@@ -758,20 +772,20 @@ async def verify_user_signature(peerASN,plaintext,pub_key_pgp,raw_signature):
         authes = await get_auth_method(mntner, admin)
         tried = False
         authresult = [{"Your input":{"plaintext":plaintext,"signature":raw_signature,"pub_key_pgp":pub_key_pgp}}]
-        for method,pub_key in authes:
+        for method,pub_key,mnt in authes:
             try:
                 if verify_signature(plaintext,pub_key,pub_key_pgp,raw_signature,method) == True:
-                    return mntner
+                    return mnt
             except Exception as e:
                 authresult += [{"Source": "User credential","Method": method , "Result": type(e).__name__ + ": " + str(e), "Content":  pub_key}]
         # verify admin signature
-        mntner_admin = my_config["admin_mnt"]
+        mntner_admin = [my_config["admin_mnt"]]
         try:
-            authes_admin = await get_auth_method(mntner_admin,None)
-            for method,pub_key in authes_admin:
+            authes_admin = await get_auth_method(mntner_admin,[])
+            for method,pub_key,mnt in authes_admin:
                 try:
                     if verify_signature(plaintext,pub_key,pub_key_pgp,raw_signature,method) == True:
-                        return mntner_admin
+                        return mnt
                 except Exception as e:
                     authresult += [{"Source": "Admin credential", "Method": method , "Result": type(e).__name__ + ": " + str(e), "Content":  pub_key}]
         except Exception as e:
@@ -908,7 +922,7 @@ async def check_reg_paramater(paramaters,skip_check=None,git_pull=True,allow_inv
         mntner,admin = await get_info_from_asn(paramaters["peerASN"])
     except FileNotFoundError as e:
         if allow_invalid_as:
-            mntner,admin = ["DN42-MNT","BURBLE-DN42"]
+            mntner,admin = [["DN42-MNT"],["BURBLE-DN42"]]
         else:
             raise e
     ######################### hasIPV4
@@ -1717,7 +1731,7 @@ async def action(paramaters):
             return 200, await get_signature_html(dn42repo_base,paramaters)
         elif action == "Register":
             mntner = await verify_user_signature(paramaters["peerASN"],paramaters["peer_plaintext"],paramaters["peer_pub_key_pgp"],paramaters["peer_signature"])
-            if mntner != my_config["admin_mnt"]:
+            if mntner not in my_config["admin_mnt"]:
                 paramaters["PeerID"] = None
                 if my_config["registerAdminOnly"]:
                     raise PermissionError("Guest registration is not enabled at this node, please contact admin.")
