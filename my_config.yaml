@@ -12,7 +12,7 @@ bdconfpath: /etc/bird/peers
 gitsyncpath: null
 dn42_whois_server:
 - git
-- "https://dn42ap:qZ8Z5szMt2RsWbdMyEku@gitlab.com/kskbsi/data/dn42-registry"
+- "https://dn42ap:qZ8Z5szMt2RsWbdMyEku@gitlab.com/kskbshi/data/dn42-registry"
 dn42repo_base: https://explorer.burble.com/?#/
 admin_mnt: ''
 DN42_valid_ipv4s:
