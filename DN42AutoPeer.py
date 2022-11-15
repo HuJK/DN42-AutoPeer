@@ -903,20 +903,23 @@ async def check_asn_ip(admin,mntner,asn,af,ip,only_ip=True):
         raise ValueError("Unknown af:",af)
     check_valid_ip_range(af,IPranges=allowed,ip=ip,name=descr,only_ip=only_ip)
     peerIP_info = DN42whois.proc_data((await whois_query(ip)))
-    if "origin" not in peerIP_info or len(peerIP_info["origin"]) == 0:
-        originASN = "nobody"
-    else:
-        originASN = peerIP_info["origin"][0]
-    origin_check_pass = False
-    if asn in peerIP_info["origin"]:
-        return True
-    elif mntner in peerIP_info["mnt-by"] and mntner != "DN42-MNT":
-        return True
-    elif admin in peerIP_info["admin-c"]:
-        return True
-    else:
-        ipowner = peerIP_info["admin-c"][0] if len(peerIP_info["admin-c"]) > 0 else None
-        raise PermissionError("IP " + ip + f" owned by {originASN}({ipowner}) instead of {asn}({admin})")
+    originASN = ["nobody"]
+    ipowner = []
+    if "origin" in peerIP_info:
+        originASN = peerIP_info["origin"]
+        if asn in peerIP_info["origin"]:
+            return True
+    if "mnt-by" in peerIP_info:
+        if "DN42-MNT" in peerIP_info["mnt-by"]:
+            peerIP_info["mnt-by"].remove("DN42-MNT")
+        ipowner += peerIP_info["mnt-by"]
+        if bool(set(mntner) & set(peerIP_info["mnt-by"])):
+            return True
+    if "admin-c" in peerIP_info:
+        ipowner += peerIP_info["admin-c"]
+        if bool(set(admin) & set(peerIP_info["admin-c"])):
+            return True
+    raise PermissionError("IP " + ip + f" owned by {originASN}({set(ipowner)}) instead of {asn}({set(admin + mntner)})")
 
 async def check_reg_paramater(paramaters,skip_check=None,git_pull=True,allow_invalid_as=False,allowed_custom_myip=[]):
     if (paramaters["hasIPV4"] or paramaters["hasIPV4LL"] or paramaters["hasIPV6"] or paramaters["hasIPV6LL"]) == False:
