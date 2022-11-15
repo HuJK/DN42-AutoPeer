@@ -1236,7 +1236,6 @@ def newConfig(paramaters,overwrite=False):
     if peerContact == None or len(peerContact) == 0:
         raise ValueError('"Your Telegram ID or e-mail" can\'t be null.')
     portlist = list(sorted(map(lambda x:int(x.split(".")[0]),filter(lambda x:x[-4:] == "yaml", os.listdir(wgconfpath + "/peerinfo")))))
-    # portlist=[23001, 23002, 23003,23004,23005,23006,23007,23008,23009,23088]
     if peerID == None:
         port_range = eval(my_config["wg_port_search_range"])
         for p in port_range:
@@ -1263,11 +1262,22 @@ def newConfig(paramaters,overwrite=False):
     if peerID in portlist and overwrite == False:
         raise IndexError("PeerID already exists.")
     paramaters["PeerID"] = peerID
-    if peerName == None:
-        peerName = str(int(peerID) % 10000).zfill(4) + peerContact
-        peerName = peerName.replace("-","_")
-        peerName = re.sub(r"[^A-Za-z0-9_]+", '', peerName)
-        peerName = peerName[:10]
+    #if peerName == None:
+    peerContact_sess = peerContact
+    if peerContact_sess.startswith("https://t.me/"):
+        peerContact_sess = peerContact_sess.split("https://t.me/",1)[1]
+    if peerContact_sess.startswith("https://"):
+        peerContact_sess = peerContact_sess.split("https://",1)[1]
+    if "@" in peerContact_sess:
+        username, domain = peerContact_sess.split("@",1)
+        if username in ["dn42","admin","root","abuse","user","tg","telegram","irc","skype","git","whatsapp"]:
+            peerContact_sess = domain
+        else:
+            peerContact_sess = username + "_" + domain
+    peerName = str(int(peerID) % 10000).zfill(4) + peerContact_sess
+    peerName = peerName.replace("-","_")
+    peerName = re.sub(r"[^A-Za-z0-9_]+", '', peerName)
+    peerName = peerName[:10]
     
     if customDevice == None:
         if_name = "dn42-" + peerName
