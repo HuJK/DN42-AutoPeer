@@ -878,9 +878,11 @@ def check_valid_ip_range(af,IPranges,ip,name,only_ip = True):
         IPInt = IPv6Interface
     else:
         raise ValueError("Unknown af:",af)
+    if ip == None or ip == "":
+        raise ValueError(f"{str(ip)} is not a vaild IPv4 or IPv6 address")
     if only_ip:
         if "/" in ip:
-            raise ValueError(ip + " is not a valid IPv4 or IPv6 address")
+            raise ValueError(ip + " is not a valid IPv4 or IPv6 address, you may need to remove /" + ip.split("/")[1])
         if IPNet(ip).num_addresses != 1:
             raise ValueError(ip + " contains more than one IP")
     for iprange in IPranges:
