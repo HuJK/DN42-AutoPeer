@@ -1272,7 +1272,7 @@ def newConfig(paramaters,overwrite=False):
         username, domain = peerContact_sess.split("@",1)
         if username in ["dn42","admin","root","abuse","user","tg","telegram","irc","skype","git","whatsapp"]:
             peerContact_sess = domain
-        else:
+        elif username != "":
             peerContact_sess = username + "_" + domain
     peerName = str(int(peerID) % 10000).zfill(4) + peerContact_sess
     peerName = peerName.replace("-","_")
