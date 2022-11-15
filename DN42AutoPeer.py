@@ -208,13 +208,13 @@ async def get_signature_html(baseURL,paramaters):
     peerASN = paramaters["peerASN"]
     peerMNT, peerADM = await get_info_from_asn(peerASN)
     try:
-        peerADMname = (await get_person_info(peerADM))["person"][0]
+        peerADMname = (await get_auth_info(["person","role"],peerADM[0]))["display"][0]
     except Exception as e:
         peerADMname = ""
     methods = await get_auth_method(peerMNT, peerADM)
     text2sign = jwt.encode({'ASN': peerASN, "exp":datetime.datetime.utcnow() + datetime.timedelta(minutes = 30) }, jwt_secret, algorithm='HS256')
     methods_class = {"Supported":{},"Unsupported":{}}
-    for m,v in methods:
+    for m,v,mnt in methods:
         if m in method_hint:
             if m not in methods_class["Supported"]:
                 methods_class["Supported"][m] = []
@@ -609,32 +609,46 @@ remove_empty_line = lambda s: "\n".join(filter(lambda x:len(x)>0, s.replace("\r\
 async def get_info_from_asn(asn):
     asn_info = await whois_query("aut-num/" + asn)
     data = DN42whois.proc_data(asn_info)
-    return data["mnt-by"][0] , data["admin-c"][0]
+    mnts = get_key_default(data,"mnt-by",[])
+    adms = get_key_default(data,"admin-c",[])
+    return mnts , adms
 
-async def get_mntner_info(mntner):
-    mntner_info = await whois_query("mntner/" + mntner)
-    ret = DN42whois.proc_data(mntner_info)
-    if "auth" not in ret:
-        ret["auth"] = []
-    return ret
+async def get_auth_info(categories,name):
+    for category in categories:
+        try:
+            auth_info = await whois_query(category + "/" + name)
+        except FileNotFoundError as e:
+            continue
+        ret = DN42whois.proc_data(auth_info)
+        if "auth" not in ret:
+            ret["auth"] = []
+        if "pgp-fingerprint" in ret:
+            ret["auth"] += ["pgp-fingerprint " + ret["pgp-fingerprint"][0]]
+        
+        if "person" in ret and len(ret["person"]) > 0:
+            ret["display"] = [ret["person"][0]]
+        elif "role" in ret and  len(ret["role"]) > 0:
+            ret["display"] = [ret["role"][0]]
+        else:
+            ret["display"] = ["[Error: Name not found]"]
+        return ret
+    raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), categories + "/" + name)
 
-async def get_person_info(person):
-    person_info = (await whois_query("person/" + person))
-    ret = DN42whois.proc_data(person_info)
-    if "auth" not in ret:
-        ret["auth"] = []
-    if "pgp-fingerprint" in ret:
-        ret["auth"] += ["pgp-fingerprint " + ret["pgp-fingerprint"][0]]
-    return ret
-
-async def get_auth_method(mnt,admin):
+async def get_auth_method(mnts,admins): # return [[method,auth_key,mnter]]
     authes = []
-    if mnt != None:
-        authes += (await get_mntner_info(mnt))["auth"]
-    if admin != None:
-        authes += (await get_person_info(admin))["auth"]
-    ret = {}
-    for a in authes:
+    for mnt in mnts:
+        try:
+            authes += [[a,mnt] for a in (await get_auth_info(["mntner"],mnt))["auth"]]
+        except FileNotFoundError as e:
+            pass
+    for admin in admins:
+        try:
+            authes += [[a,admin] for a in (await get_auth_info(["person","role"],admin))["auth"]]
+        except FileNotFoundError as e:
+            pass
+    auth_dict = {}
+    for auth in authes:
+        a,mnt = auth
         if a.startswith("PGPKEY"):
             method , pgp_sign8 = a.split("-",1)
             pgp_pubkey_str = await try_get_pub_key(pgp_sign8)
@@ -648,8 +662,13 @@ async def get_auth_method(mnt,admin):
                 ainfo = method + "_Error " + str(e).replace(" ","_")
         else:
             ainfo = a
-        ret[ainfo] = False
-    return list(filter(lambda x:len(x) == 2,[r.split(" ",1) for r,v in ret.items()]))
+        auth_dict[ainfo] = mnt
+    ret = []
+    for r,v in auth_dict.items():
+        if len(r.split(" ",1)) == 2:
+            m,a = r.split(" ",1)
+            ret += [[m,a,v]]
+    return ret
 
 async def try_get_pub_key(pgpsig):
     if len(pgpsig) < 8:
@@ -758,20 +777,20 @@ async def verify_user_signature(peerASN,plaintext,pub_key_pgp,raw_signature):
         authes = await get_auth_method(mntner, admin)
         tried = False
         authresult = [{"Your input":{"plaintext":plaintext,"signature":raw_signature,"pub_key_pgp":pub_key_pgp}}]
-        for method,pub_key in authes:
+        for method,pub_key,mnt in authes:
             try:
                 if verify_signature(plaintext,pub_key,pub_key_pgp,raw_signature,method) == True:
-                    return mntner
+                    return mnt
             except Exception as e:
                 authresult += [{"Source": "User credential","Method": method , "Result": type(e).__name__ + ": " + str(e), "Content":  pub_key}]
         # verify admin signature
-        mntner_admin = my_config["admin_mnt"]
+        mntner_admin = [my_config["admin_mnt"]]
         try:
-            authes_admin = await get_auth_method(mntner_admin,None)
-            for method,pub_key in authes_admin:
+            authes_admin = await get_auth_method(mntner_admin,[])
+            for method,pub_key,mnt in authes_admin:
                 try:
                     if verify_signature(plaintext,pub_key,pub_key_pgp,raw_signature,method) == True:
-                        return mntner_admin
+                        return mnt
                 except Exception as e:
                     authresult += [{"Source": "Admin credential", "Method": method , "Result": type(e).__name__ + ": " + str(e), "Content":  pub_key}]
         except Exception as e:
@@ -859,9 +878,11 @@ def check_valid_ip_range(af,IPranges,ip,name,only_ip = True):
         IPInt = IPv6Interface
     else:
         raise ValueError("Unknown af:",af)
+    if ip == None or ip == "":
+        raise ValueError(f"{str(ip)} is not a vaild IPv4 or IPv6 address")
     if only_ip:
         if "/" in ip:
-            raise ValueError(ip + " is not a valid IPv4 or IPv6 address")
+            raise ValueError(ip + " is not a valid IPv4 or IPv6 address, you may need to remove /" + ip.split("/")[1])
         if IPNet(ip).num_addresses != 1:
             raise ValueError(ip + " contains more than one IP")
     for iprange in IPranges:
@@ -884,20 +905,23 @@ async def check_asn_ip(admin,mntner,asn,af,ip,only_ip=True):
         raise ValueError("Unknown af:",af)
     check_valid_ip_range(af,IPranges=allowed,ip=ip,name=descr,only_ip=only_ip)
     peerIP_info = DN42whois.proc_data((await whois_query(ip)))
-    if "origin" not in peerIP_info or len(peerIP_info["origin"]) == 0:
-        originASN = "nobody"
-    else:
-        originASN = peerIP_info["origin"][0]
-    origin_check_pass = False
-    if asn in peerIP_info["origin"]:
-        return True
-    elif mntner in peerIP_info["mnt-by"] and mntner != "DN42-MNT":
-        return True
-    elif admin in peerIP_info["admin-c"]:
-        return True
-    else:
-        ipowner = peerIP_info["admin-c"][0] if len(peerIP_info["admin-c"]) > 0 else None
-        raise PermissionError("IP " + ip + f" owned by {originASN}({ipowner}) instead of {asn}({admin})")
+    originASN = ["nobody"]
+    ipowner = []
+    if "origin" in peerIP_info:
+        originASN = peerIP_info["origin"]
+        if asn in peerIP_info["origin"]:
+            return True
+    if "mnt-by" in peerIP_info:
+        if "DN42-MNT" in peerIP_info["mnt-by"]:
+            peerIP_info["mnt-by"].remove("DN42-MNT")
+        ipowner += peerIP_info["mnt-by"]
+        if bool(set(mntner) & set(peerIP_info["mnt-by"])):
+            return True
+    if "admin-c" in peerIP_info:
+        ipowner += peerIP_info["admin-c"]
+        if bool(set(admin) & set(peerIP_info["admin-c"])):
+            return True
+    raise PermissionError("IP " + ip + f" owned by {originASN}({set(ipowner)}) instead of {asn}({set(admin + mntner)})")
 
 async def check_reg_paramater(paramaters,skip_check=None,git_pull=True,allow_invalid_as=False,allowed_custom_myip=[]):
     if (paramaters["hasIPV4"] or paramaters["hasIPV4LL"] or paramaters["hasIPV6"] or paramaters["hasIPV6LL"]) == False:
@@ -908,7 +932,7 @@ async def check_reg_paramater(paramaters,skip_check=None,git_pull=True,allow_inv
         mntner,admin = await get_info_from_asn(paramaters["peerASN"])
     except FileNotFoundError as e:
         if allow_invalid_as:
-            mntner,admin = ["DN42-MNT","BURBLE-DN42"]
+            mntner,admin = [["DN42-MNT"],["BURBLE-DN42"]]
         else:
             raise e
     ######################### hasIPV4
@@ -1212,7 +1236,6 @@ def newConfig(paramaters,overwrite=False):
     if peerContact == None or len(peerContact) == 0:
         raise ValueError('"Your Telegram ID or e-mail" can\'t be null.')
     portlist = list(sorted(map(lambda x:int(x.split(".")[0]),filter(lambda x:x[-4:] == "yaml", os.listdir(wgconfpath + "/peerinfo")))))
-    # portlist=[23001, 23002, 23003,23004,23005,23006,23007,23008,23009,23088]
     if peerID == None:
         port_range = eval(my_config["wg_port_search_range"])
         for p in port_range:
@@ -1239,11 +1262,22 @@ def newConfig(paramaters,overwrite=False):
     if peerID in portlist and overwrite == False:
         raise IndexError("PeerID already exists.")
     paramaters["PeerID"] = peerID
-    if peerName == None:
-        peerName = str(int(peerID) % 10000).zfill(4) + peerContact
-        peerName = peerName.replace("-","_")
-        peerName = re.sub(r"[^A-Za-z0-9_]+", '', peerName)
-        peerName = peerName[:10]
+    #if peerName == None:
+    peerContact_sess = peerContact
+    if peerContact_sess.startswith("https://t.me/"):
+        peerContact_sess = peerContact_sess.split("https://t.me/",1)[1]
+    if peerContact_sess.startswith("https://"):
+        peerContact_sess = peerContact_sess.split("https://",1)[1]
+    if "@" in peerContact_sess:
+        username, domain = peerContact_sess.split("@",1)
+        if username in ["dn42","admin","root","abuse","user","tg","telegram","irc","skype","git","whatsapp"]:
+            peerContact_sess = domain
+        else:
+            peerContact_sess = username + "_" + domain
+    peerName = str(int(peerID) % 10000).zfill(4) + peerContact_sess
+    peerName = peerName.replace("-","_")
+    peerName = re.sub(r"[^A-Za-z0-9_]+", '', peerName)
+    peerName = peerName[:10]
     
     if customDevice == None:
         if_name = "dn42-" + peerName
@@ -1717,7 +1751,7 @@ async def action(paramaters):
             return 200, await get_signature_html(dn42repo_base,paramaters)
         elif action == "Register":
             mntner = await verify_user_signature(paramaters["peerASN"],paramaters["peer_plaintext"],paramaters["peer_pub_key_pgp"],paramaters["peer_signature"])
-            if mntner != my_config["admin_mnt"]:
+            if mntner not in my_config["admin_mnt"]:
                 paramaters["PeerID"] = None
                 if my_config["registerAdminOnly"]:
                     raise PermissionError("Guest registration is not enabled at this node, please contact admin.")
