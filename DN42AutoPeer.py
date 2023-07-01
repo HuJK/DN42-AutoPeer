@@ -1039,6 +1039,8 @@ async def check_reg_paramater(paramaters,skip_check=None,git_pull=True,allow_inv
                     raise FileExistsError(f'This IPv6 address {paramaters["peerIPV6"]} already exisis in "{old_conf_file}", please remove the peering first.')
                 if old_conf["peerHost"] != None and old_conf["peerHost"] == paramaters["peerHost"]:
                     raise FileExistsError(f'This endpoint "{paramaters["peerHost"]}" already exisis in "{old_conf_file}", please remove the peering first.')
+                if old_conf["peerASN"] != None and old_conf["peerASN"] == paramaters["peerASN"]:
+                    raise FileExistsError(f'This ASN "{paramaters["peerASN"]}" already exisis in "{old_conf_file}", please remove the peering or update it first.')
     return paramaters
 
 def replace_str(text,replace):
