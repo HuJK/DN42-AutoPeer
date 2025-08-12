@@ -890,7 +890,7 @@ def check_valid_ip_range(af,IPranges,ip,name,only_ip = True):
             return True
     raise ValueError(ip + " are not in " + name + " range: " + str(IPranges))
 
-async def check_asn_ip(admin,mntner,asn,af,ip,only_ip=True):
+async def check_asn_ip(admin,mntner,asn,af,ip,only_ip=True, added_by_admin_asn=None):
     if af == "IPv4":
         IPNet = IPv4Network
         IPInt = IPv4Interface
@@ -911,6 +911,9 @@ async def check_asn_ip(admin,mntner,asn,af,ip,only_ip=True):
         originASN = peerIP_info["origin"]
         if asn in peerIP_info["origin"]:
             return True
+    if added_by_admin_asn != None:
+        if added_by_admin_asn in peerIP_info["origin"]:
+            return True
     if "mnt-by" in peerIP_info:
         if "DN42-MNT" in peerIP_info["mnt-by"]:
             peerIP_info["mnt-by"].remove("DN42-MNT")
@@ -923,7 +926,7 @@ async def check_asn_ip(admin,mntner,asn,af,ip,only_ip=True):
             return True
     raise PermissionError("IP " + ip + f" owned by {originASN}({set(ipowner)}) instead of {asn}({set(admin + mntner)})")
 
-async def check_reg_paramater(paramaters,skip_check=None,git_pull=True,allow_invalid_as=False,allowed_custom_myip=[]):
+async def check_reg_paramater(paramaters,skip_check=None,git_pull=True,allow_invalid_as=False,allowed_custom_myip=[],added_by_admin=False):
     if (paramaters["hasIPV4"] or paramaters["hasIPV4LL"] or paramaters["hasIPV6"] or paramaters["hasIPV6LL"]) == False:
         raise ValueError("You can't peer without any IP.")
     if paramaters["peerASN"] == "AS" + paramaters["myASN"]:
@@ -939,12 +942,12 @@ async def check_reg_paramater(paramaters,skip_check=None,git_pull=True,allow_inv
     if paramaters["hasIPV4"]:
         if paramaters["myIPV4"] == None:
             raise NotImplementedError("Sorry, I don't have IPv4 address.")
-        await check_asn_ip(admin,mntner,paramaters['peerASN'],"IPv4",paramaters["peerIPV4"],only_ip=True)
+        await check_asn_ip(admin,mntner,paramaters['peerASN'],"IPv4",paramaters["peerIPV4"],only_ip=True,added_by_admin_asn=paramaters["myASN"])
         if paramaters["myIPV4"] == my_paramaters["myIPV4"] or paramaters["myIPV4"] in allowed_custom_myip:
             pass
         else:
             if "/" not in paramaters["myIPV4"]:
-                await check_asn_ip(admin,mntner,paramaters['peerASN'],"IPv4",paramaters["myIPV4"],only_ip=True)
+                await check_asn_ip(admin,mntner,paramaters['peerASN'],"IPv4",paramaters["myIPV4"],only_ip=True,added_by_admin_asn=paramaters["myASN"])
             else:
                 await check_asn_ip(admin,mntner,paramaters['peerASN'],"IPv4",paramaters["myIPV4"],only_ip=False)
                 check_valid_ip_range("IPv4",[paramaters["myIPV4"]],paramaters["peerIPV4"],"allocated IPv4 to me")
@@ -954,12 +957,12 @@ async def check_reg_paramater(paramaters,skip_check=None,git_pull=True,allow_inv
     if paramaters["hasIPV6"]:
         if paramaters["myIPV6"] == None:
             raise NotImplementedError("Sorry, I don't have IPv6 address.")
-        await check_asn_ip(admin,mntner,paramaters['peerASN'],"IPv6",paramaters["peerIPV6"],only_ip=True)
+        await check_asn_ip(admin,mntner,paramaters['peerASN'],"IPv6",paramaters["peerIPV6"],only_ip=True,added_by_admin_asn=paramaters["myASN"])
         if paramaters["myIPV6"] == my_paramaters["myIPV6"] or paramaters["myIPV6"] in allowed_custom_myip:
             pass
         else:
             if "/" not in paramaters["myIPV6"]:
-                await check_asn_ip(admin,mntner,paramaters['peerASN'],"IPv6",paramaters["myIPV6"],only_ip=True)
+                await check_asn_ip(admin,mntner,paramaters['peerASN'],"IPv6",paramaters["myIPV6"],only_ip=True,added_by_admin_asn=paramaters["myASN"])
             else:
                 await check_asn_ip(admin,mntner,paramaters['peerASN'],"IPv6",paramaters["myIPV6"],only_ip=False)
                 check_valid_ip_range("IPv6",[paramaters["myIPV6"]],paramaters["peerIPV6"],"allocated IPv6 to me")
@@ -1893,4 +1896,4 @@ if __name__ == '__main__':
     server = tornado.httpserver.HTTPServer(app, ssl_options=my_config["ssl_options"] )
     server.listen(my_config["listen_port"],my_config["listen_host"])
     print("Done. Start serving http(s) on " + my_config["listen_host"]+ ":" + str(my_config["listen_port"]))
-    tornado.ioloop.IOLoop.current().start()
+    tornado.ioloop.IOLoop.current().start
