@@ -1896,4 +1896,4 @@ if __name__ == '__main__':
     server = tornado.httpserver.HTTPServer(app, ssl_options=my_config["ssl_options"] )
     server.listen(my_config["listen_port"],my_config["listen_host"])
     print("Done. Start serving http(s) on " + my_config["listen_host"]+ ":" + str(my_config["listen_port"]))
-    tornado.ioloop.IOLoop.current().start
+    tornado.ioloop.IOLoop.current().start()
