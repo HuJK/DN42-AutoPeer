@@ -132,6 +132,7 @@ try_read_env(my_config,"dn42_whois_server","DN42AP_WHOIS_SERVER","json")
 try_read_env(my_config,"dn42repo_base","DN42AP_REPO_BASE",str)
 try_read_env(my_config,"init_device",'DN42AP_INIT_DEVICE',bool)
 try_read_env(my_config,"reset_wgconf_interval",'DN42AP_RESET_WGCONF',int,0)
+try_read_env(my_config,"allowed_asns_multi_session",'DN42AP_ALLOWED_ASNS_MULTI_SESSION',"json",[])
 
 RRstate_repo = DN42GIT(my_config["gitsyncpath"])
 
@@ -926,7 +927,7 @@ async def check_asn_ip(admin,mntner,asn,af,ip,only_ip=True, added_by_admin_asn=N
             return True
     raise PermissionError("IP " + ip + f" owned by {originASN}({set(ipowner)}) instead of {asn}({set(admin + mntner)})")
 
-async def check_reg_paramater(paramaters,skip_check=None,git_pull=True,allow_invalid_as=False,allowed_custom_myip=[],added_by_admin=False):
+async def check_reg_paramater(paramaters,skip_check=None,git_pull=True,allow_invalid_as=False,allowed_custom_myip=[],added_by_admin=False,allowed_asns_multi_session=my_config["allowed_asns_multi_session"]):
     if (paramaters["hasIPV4"] or paramaters["hasIPV4LL"] or paramaters["hasIPV6"] or paramaters["hasIPV6LL"]) == False:
         raise ValueError("You can't peer without any IP.")
     if paramaters["peerASN"] == "AS" + paramaters["myASN"]:
@@ -1042,7 +1043,7 @@ async def check_reg_paramater(paramaters,skip_check=None,git_pull=True,allow_inv
                     raise FileExistsError(f'This IPv6 address {paramaters["peerIPV6"]} already exisis in "{old_conf_file}", please remove the peering first.')
                 if old_conf["peerHost"] != None and old_conf["peerHost"] == paramaters["peerHost"]:
                     raise FileExistsError(f'This endpoint "{paramaters["peerHost"]}" already exisis in "{old_conf_file}", please remove the peering first.')
-                if old_conf["peerASN"] != None and old_conf["peerASN"] == paramaters["peerASN"]:
+                if paramaters["peerASN"] not in allowed_asns_multi_session and old_conf["peerASN"] != None and old_conf["peerASN"] == paramaters["peerASN"]:
                     raise FileExistsError(f'This ASN "{paramaters["peerASN"]}" already exisis in "{old_conf_file}", please remove the peering or update it first.')
     return paramaters
 
