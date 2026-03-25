@@ -60,6 +60,7 @@ confpath = "my_config.yaml"
 parmpath = "my_parameters.yaml"
 
 peerHostDisplayText = "(Peer endpoint hidden, authenticate to show)"
+peerWG_PS_Key_DisplayText = "(Preshared key hidden, authenticate to show)"
 
 if args.config:
     confpath = args.config
@@ -328,6 +329,7 @@ async def get_html(paramaters,action="OK",peerSuccess=False):
     peerHostDisplay = peerHostDisplayText
     peerWG_Pub_Key = paramaters["peerWG_Pub_Key"]
     peerWG_PS_Key = paramaters["peerWG_PS_Key"]
+    peerWG_PS_Key_Display = peerWG_PS_Key
     peerContact = paramaters["peerContact"]
     PeerID = paramaters["PeerID"]
     myASN = paramaters["myASN"]
@@ -376,6 +378,13 @@ async def get_html(paramaters,action="OK",peerSuccess=False):
                 pass
     else:
         peerHostDisplay = peerHost
+    if peerWG_PS_Key != "" and peerWG_PS_Key != None:
+        peerWG_PS_Key_Display = peerWG_PS_Key_DisplayText
+        try:
+            mntner = await verify_user_signature(paramaters["peerASN"],paramaters["peer_plaintext"],paramaters["peer_pub_key_pgp"],peer_signature)
+            peerWG_PS_Key_Display = peerWG_PS_Key
+        except Exception as e:
+            pass
     if myHost == "":
         hasHost = True
         hasHost_Readonly = 'onclick="alert(\\"Sorry, I don\'t have a public IP so that your endpoint can\'t be null.\\");return false;"'
@@ -580,7 +589,7 @@ function onENH() {
    <tr><td><h5>Wireguard Connection Info:</h5></td><td>  </td></tr>
    <tr><td><input type="checkbox" name="hasHost" {"checked" if hasHost else ""} {hasHost_Readonly}>Your Clearnet Endpoint (domain or ip:port)</td><td><input type="text" value="{peerHostDisplay if peerHost != None else ""}" name="peerHost" /></td></tr>
    <tr><td>Your Wireguard Public Key</td><td><input type="text" value="{peerWG_Pub_Key}" name="peerWG_Pub_Key" /></td></tr>
-   <tr><td>Your Wireguard Pre-Shared Key (Optional)</td><td><input type="text" value="{peerWG_PS_Key}" name="peerWG_PS_Key" /></td></tr>
+   <tr><td>Your Wireguard Pre-Shared Key (Optional)</td><td><input type="text" value="{peerWG_PS_Key_Display}" name="peerWG_PS_Key" /></td></tr>
    <tr><td>Your Telegram ID or e-mail</td><td><input type="text" value="{peerContact}" name="peerContact" /></td></tr>
    <tr><td>Register a new peer and get the peer ID</td><td><input type="submit" translate="no" name="action" value="Register" /></td></tr>
    </table>
@@ -1727,6 +1736,8 @@ async def action(paramaters):
             mntner = await verify_user_signature(paramaters["peerASN"],paramaters["peer_plaintext"],paramaters["peer_pub_key_pgp"],paramaters["peer_signature"])
             if paramaters["peerHost"] == peerHostDisplayText:
                 paramaters["peerHost"] = try_get_param(paramaters["PeerID"],"peerHost","")
+            if paramaters["peerWG_PS_Key"] == peerWG_PS_Key_DisplayText:
+                paramaters["peerWG_PS_Key"] = try_get_param(paramaters["PeerID"],"peerWG_PS_Key","")
             try:
                 peerInfo = yaml.load(open(wgconfpath + "/peerinfo/" + paramaters["PeerID"] + ".yaml").read(),Loader=yaml.SafeLoader)
             except FileNotFoundError as e:
